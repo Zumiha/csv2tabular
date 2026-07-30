@@ -32,6 +32,9 @@ public:
     std::vector<int> delete_cols;
     std::vector<int> prj_cols;
     std::vector<std::string> prj_cols_header;
+    std::vector<int> move_new_order;
+    std::vector<int> move_from;
+    std::vector<int> move_to;
 
 };
 

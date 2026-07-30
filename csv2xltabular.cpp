@@ -123,9 +123,12 @@ void CSVtoXLTABularConverter::loadSettings()
         if (has_new_order ^ has_from_to) {
             // Exactly one approach configured — load accordingly
             if (has_new_order) {
-             has_column_moves_ = MoveOption::NewOrder;
+                has_column_moves_ = MoveOption::NewOrder;
+                table_config_.move_new_order = apply1basedTo0based(ini_parser_->getValue<std::vector<int>>("column_moves.new_order"));
             } else {
                 has_column_moves_ = MoveOption::FromTo;
+                table_config_.move_from = apply1basedTo0based(ini_parser_->getValue<std::vector<int>>("column_moves.from"));
+                table_config_.move_to = apply1basedTo0based(ini_parser_->getValue<std::vector<int>>("column_moves.to"));
             }
         } else {
             std::cerr << "[WARN] column_moves: specify either new_order OR from+to, not both/neither. No columns will be moved.\n";
@@ -192,11 +195,11 @@ void CSVtoXLTABularConverter::modDefault()
     {
     case MoveOption::NewOrder:
         std::cout << "Reordering columns based on new_order\n";
-        csv_parser_->reorderColumns(parsed_table_, apply1basedTo0based(ini_parser_->getValue<std::vector<int>>("column_moves.new_order")));
+        csv_parser_->reorderColumns(parsed_table_, table_config_.move_new_order);
         break;
     case MoveOption::FromTo:
         std::cout << "Moving columns based on from+to\n";
-        csv_parser_->reorderColumns(parsed_table_, apply1basedTo0based(ini_parser_->getValue<std::vector<int>>("column_moves.from")), apply1basedTo0based(ini_parser_->getValue<std::vector<int>>("column_moves.to")));
+        csv_parser_->reorderColumns(parsed_table_, table_config_.move_from, table_config_.move_to);
         break;
     default:
         break;
