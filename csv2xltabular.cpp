@@ -145,6 +145,34 @@ void CSVtoXLTABularConverter::loadSettings()
     } else {
         std::cout << "No project columns settings found. No project info file will be created.\n"; 
     }
+
+    // Check if columns for decimal normalization specified
+    if (ini_parser_->hasSection("normalize_decimals")) {
+        auto columns   = apply1basedTo0based(ini_parser_->getValue<std::vector<int>>("normalize_decimals.columns"));
+        auto precision = ini_parser_->getValue<std::vector<int>>("normalize_decimals.precision");
+        auto delimiter = ini_parser_->getValue<std::string>("normalize_decimals.delimiter");
+
+        if (columns.size() != precision.size())
+            throw std::runtime_error("normalize_decimals: 'columns' and 'precision' must have equal length");
+        
+        // Group columns by precision — mirrors existing call-site pattern
+        std::set<int> seen_columns;
+        std::map<int, std::vector<int>> grouped; // precision → column list
+        for (size_t i = 0; i < columns.size(); ++i) {
+            if (seen_columns.count(columns[i]))
+                throw std::runtime_error("normalize_decimals: column " +
+                                        std::to_string(columns[i] + 1) + // report as 1-based for user
+                                        " listed more than once");
+
+            seen_columns.insert(columns[i]);
+            grouped[precision[i]].push_back(columns[i]);
+        }
+        table_config_.decimal_normalizations = std::move(grouped);
+        table_config_.decimal_delimiter = delimiter;
+        has_column_normalize = true;
+    } else { 
+        std::cout << "No decimal precision columns settings found. Values will not be normalized.\n"; 
+    }
 }
 
 void CSVtoXLTABularConverter::modDefault()
@@ -163,8 +191,6 @@ void CSVtoXLTABularConverter::modDefault()
     auto kp_pos = static_cast<size_t>(ini_parser_->getValue<int>("column_del.kp_col") - 1); // Convert to 0-based index
     csv_parser_->mergeColumns(parsed_table_, 0, kp_pos);
 
-
-
     // Delete columns not used in spreadsheet
     // Apply 0 based counter
     auto reversed_list = apply1basedTo0based(table_config_.delete_cols);
@@ -173,24 +199,7 @@ void CSVtoXLTABularConverter::modDefault()
     // Remove columns not used in spreadsheet
     csv_parser_->deleteColumns(parsed_table_, reversed_list);
 
-    // Normalize decimal columns
-    auto delimiter = ",";
-    std::vector<int> dec_cols = {10};
-    normalizeDecCols(parsed_table_, apply1basedTo0based(dec_cols), 0, delimiter);
-    dec_cols = {1, 9, 12, 13};
-    normalizeDecCols(parsed_table_, apply1basedTo0based(dec_cols), 1, delimiter);
-    dec_cols = {8, 11, 14};
-    normalizeDecCols(parsed_table_, apply1basedTo0based(dec_cols), 3, delimiter);
-
-
-    // Check if header needed, attach header
-    auto header = ini_parser_->getValue<std::string>("sheet_settings.SpSh_header_val");
-    if (header == "true") {
-        std::cout << "Creating header for SpreadSheet" << std::endl;
-        auto table_header = ini_parser_->getValue<std::vector<std::string>>("sheet_settings.SpSh_header");
-        parsed_table_[0] = table_header;
-    }    
-
+    // Check for column reordering
     switch (has_column_moves_)
     {
     case MoveOption::NewOrder:
@@ -203,6 +212,21 @@ void CSVtoXLTABularConverter::modDefault()
         break;
     default:
         break;
+    }
+
+    // Normalize decimal columns
+    if (has_column_normalize) {
+        for (const auto& [precision, cols] : table_config_.decimal_normalizations) {
+            normalizeDecCols(parsed_table_, cols, precision, table_config_.decimal_delimiter);
+        }
+    }
+
+    // Check if header needed, attach header
+    auto header = ini_parser_->getValue<std::string>("sheet_settings.SpSh_header_val");
+    if (header == "true") {
+        std::cout << "Creating header for SpreadSheet" << std::endl;
+        auto table_header = ini_parser_->getValue<std::vector<std::string>>("sheet_settings.SpSh_header");
+        parsed_table_[0] = table_header;
     }
 }
 

@@ -29,12 +29,17 @@ public:
     int columns_sum_width = 102; // mm, sum of column widths (excluding the first column)
     float table_column_width; // mm, width of each column in the main tables
 
-    std::vector<int> delete_cols;
     std::vector<int> prj_cols;
     std::vector<std::string> prj_cols_header;
+    
+    std::vector<int> delete_cols;
+    
     std::vector<int> move_new_order;
     std::vector<int> move_from;
     std::vector<int> move_to;
+
+    std::map<int, std::vector<int>> decimal_normalizations;
+    std::string decimal_delimiter;
 
 };
 
@@ -107,6 +112,7 @@ public:
     bool has_delete_cols = false;
     MoveOption has_column_moves_ = MoveOption::Default;
     std::vector<std::pair<int,int>> column_moves_;
+    bool has_column_normalize = false;
 
     std::vector<int> apply1basedTo0based(const std::vector<int>& one_based_indices); 
 
