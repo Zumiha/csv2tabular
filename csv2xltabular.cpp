@@ -63,11 +63,11 @@ void CSVtoXLTABularConverter::convert()
     switch (convert_type_)
     {
     case TableType::Default:
-        std::cout << "Modding to default format table\n";
+        std::cout << "\n[LOG] Converting to Default format table\n";
         modDefault();
         break;
     case TableType::HeadColumn:
-        std::cout << "Modding to Head Column format table\n";
+        std::cout << "\n[LOG] Converting to Head Column format table\n";
         modHeadColumn();
         break;
     default:
@@ -89,7 +89,13 @@ void CSVtoXLTABularConverter::exportToFile(const std::string &output_filename) {
 
 void CSVtoXLTABularConverter::loadSettings()
 {
-    convert_type_ = static_cast<TableType>(ini_parser_->getValue<int>("source_csv.type"));
+    std::cout << "\n[LOG] Loading settings from INI\n";
+    if (ini_parser_->hasKey("source_csv.type")) {
+        convert_type_ = static_cast<TableType>(ini_parser_->getValue<int>("source_csv.type"));
+    } else {
+        std::cout << "No document type settings found. Converting to default type.\n"; // Using default type
+        convert_type_ = TableType::Default;
+    }
 
     // Check for start row-column
     if (ini_parser_->hasKey("source_csv.start_row")) {
@@ -114,7 +120,10 @@ void CSVtoXLTABularConverter::loadSettings()
     }
 
     // Check for columns to merge
+    if (ini_parser_->hasSection("column_merge")) {
 
+        has_merge_cols = true;
+    }
     // Check for columns to move
     if (ini_parser_->hasSection("column_moves")) {
         bool has_new_order = ini_parser_->hasKey("column_moves.new_order");
@@ -181,7 +190,7 @@ void CSVtoXLTABularConverter::loadSettings()
 }
 
 void CSVtoXLTABularConverter::modDefault()
-{    
+{   
     // Extract project data from csv if available
     if (has_column_prj) {
         std::cout << "Extracting project data\n";
@@ -192,17 +201,15 @@ void CSVtoXLTABularConverter::modDefault()
     }
     
     // MTM SpreadSheet table conversion block
+
+    // Delete columns not used in spreadsheet
+    auto reversed_list = apply1basedTo0based(table_config_.delete_cols); // Apply 0 based counter
+    std::sort(reversed_list.rbegin(), reversed_list.rend()); // Sort in descending order to avoid index shifting issues when deleting
+    csv_parser_->deleteColumns(parsed_table_, reversed_list); // Remove columns not used in spreadsheet
+
     // Merge columns
     auto kp_pos = static_cast<size_t>(ini_parser_->getValue<int>("column_del.kp_col") - 1); // Convert to 0-based index
     csv_parser_->mergeColumns(parsed_table_, 0, kp_pos);
-
-    // Delete columns not used in spreadsheet
-    // Apply 0 based counter
-    auto reversed_list = apply1basedTo0based(table_config_.delete_cols);
-    // Sort in descending order to avoid index shifting issues when deleting
-    std::sort(reversed_list.rbegin(), reversed_list.rend());
-    // Remove columns not used in spreadsheet
-    csv_parser_->deleteColumns(parsed_table_, reversed_list);
 
     // Check for column reordering
     switch (has_column_moves_)
@@ -356,7 +363,7 @@ bool CSVtoXLTABularConverter::isEmptyRow(const std::vector<std::string> &vec) {
 
 std::map<int, std::vector<std::string>> CSVtoXLTABularConverter::extractAndValidate(const std::map<int, std::vector<std::string>> &table, const std::vector<int> &columns_list, const std::vector<std::string> &header_list)
 {
-    std::cout << "\nExtracting and validating project data.\n";
+    std::cout << "Extracting and validating project data.\n";
 
     auto data_from_table = csv_parser_->extractTable(table, columns_list);
 

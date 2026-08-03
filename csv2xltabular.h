@@ -38,6 +38,9 @@ public:
     std::vector<int> move_from;
     std::vector<int> move_to;
 
+    std::vector<int> merge_from;
+    std::vector<int> merge_into;
+
     std::map<int, std::vector<int>> decimal_normalizations;
     std::string decimal_delimiter;
 
@@ -110,6 +113,7 @@ public:
 
     bool has_column_prj = false;
     bool has_delete_cols = false;
+    bool has_merge_cols = false;
     MoveOption has_column_moves_ = MoveOption::Default;
     std::vector<std::pair<int,int>> column_moves_;
     bool has_column_normalize = false;
