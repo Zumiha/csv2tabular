@@ -60,18 +60,16 @@ void CSVtoXLTABularConverter::convert()
     
     parsed_table_ = csv_parser_->parse_all(start_row_, start_colum_);
 
-    switch (ini_parser_->getValue<int>("source_csv.type"))
+    switch (convert_type_)
     {
-    case 0:
-        convert_type_ = TableType::Default;
+    case TableType::Default:
         std::cout << "Modding to default format table\n";
         modDefault();
         break;
-    case 1:
-        convert_type_ = TableType::HeadColumn;
+    case TableType::HeadColumn:
         std::cout << "Modding to Head Column format table\n";
         modHeadColumn();
-        break;    
+        break;
     default:
         convert_type_ = TableType::Other;
         std::cout << "Chosen convert type \"" << to_string(convert_type_) << "\" not implemented.";
@@ -91,6 +89,8 @@ void CSVtoXLTABularConverter::exportToFile(const std::string &output_filename) {
 
 void CSVtoXLTABularConverter::loadSettings()
 {
+    convert_type_ = static_cast<TableType>(ini_parser_->getValue<int>("source_csv.type"));
+
     // Check for start row-column
     if (ini_parser_->hasKey("source_csv.start_row")) {
         start_row_ = ini_parser_->getValue<int>("source_csv.start_row");
@@ -150,7 +150,12 @@ void CSVtoXLTABularConverter::loadSettings()
     if (ini_parser_->hasSection("normalize_decimals")) {
         auto columns   = apply1basedTo0based(ini_parser_->getValue<std::vector<int>>("normalize_decimals.columns"));
         auto precision = ini_parser_->getValue<std::vector<int>>("normalize_decimals.precision");
-        auto delimiter = ini_parser_->getValue<std::string>("normalize_decimals.delimiter");
+        std::string delimiter;
+        if (ini_parser_->hasKey("normalize_decimals.delimiter")) {
+            delimiter = ini_parser_->getValue<std::string>("normalize_decimals.delimiter");
+        } else {
+            delimiter = ",";
+        }
 
         if (columns.size() != precision.size())
             throw std::runtime_error("normalize_decimals: 'columns' and 'precision' must have equal length");
