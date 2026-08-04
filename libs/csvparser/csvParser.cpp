@@ -94,29 +94,23 @@ void CSVParser::mergeColumns(std::map<int, std::vector<std::string>> &table, con
         throw std::invalid_argument("[ERROR] mergeColumns: 'from' and 'into' must have equal length");
     
     std::set<int> seen_from;
-    std::vector<std::pair<int,int>> merges; // {from, into}
     if (!from.empty()) {
-        // Validate that 'from' columns are unique and not merging into themselves
-        // Build pairs and sort by 'from' descending — deleting high indices first
-        // prevents earlier deletes from shifting later merge targets
-
+        // Validate that columns are unique and not merging into themselves
         for (size_t i = 0; i < from.size(); ++i) {
             if (seen_from.count(from[i]))
-                throw std::runtime_error("column_merge: column " + std::to_string(from[i] + 1) + " listed more than once in 'from'");
+                throw std::runtime_error("[ERROR] column_merge: column " + std::to_string(from[i] + 1) + " listed more than once in 'from'");
             seen_from.insert(from[i]);
                 
             if (from[i] == into[i])
-                throw std::runtime_error("column_merge: column " + std::to_string(from[i] + 1) + " cannot merge into itself");
-            
-            merges.emplace_back(from[i], into[i]);
-        }
+                throw std::runtime_error("[ERROR] column_merge: column " + std::to_string(from[i] + 1) + " cannot merge into itself");
+        }       
+        for (size_t i = 0; i < from.size(); ++i)
+            mergeColumns(table, into[i], from[i]); // merge from → into
 
-        std::sort(merges.begin(), merges.end(), [](const auto& a, const auto& b) { return a.first > b.first; });
-        
-        for (const auto& [from, into] : merges) {
-            mergeColumns(table, into, from); // merge from → into
-            deleteColumn(table, from);       // then remove from
-        }                
+        std::vector<int> to_delete = from;
+        std::sort(to_delete.rbegin(), to_delete.rend());
+        for (int idx : to_delete)
+            deleteColumn(table, idx);   // then remove from           
     }
 }
 
