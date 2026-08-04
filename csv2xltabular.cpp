@@ -121,9 +121,24 @@ void CSVtoXLTABularConverter::loadSettings()
 
     // Check for columns to merge
     if (ini_parser_->hasSection("column_merge")) {
+        bool has_merge_from = ini_parser_->hasKey("column_merge.from");
+        bool has_merge_into = ini_parser_->hasKey("column_merge.into");
 
-        has_merge_cols = true;
+        if (has_merge_from && has_merge_into) {
+            table_config_.merge_from = apply1basedTo0based(ini_parser_->getValue<std::vector<int>>("column_merge.from"));
+            table_config_.merge_into = apply1basedTo0based(ini_parser_->getValue<std::vector<int>>("column_merge.into"));
+            if (table_config_.merge_from.size() != table_config_.merge_into.size()) {
+                std::cerr << "[WARN] column_merge: from-into parameters need to have same number of columns. No columns will be merged." << std::endl;
+            } else {
+                has_merge_cols = true;
+            }
+        } else {
+            std::cerr << "[WARN] column_merge: failed to detect from-into columns to merge. No columns will be merged.\n" << std::endl;
+        }
+    } else {
+        std::cout << "No merge columns settings found. Default order would be kept.\n";
     }
+
     // Check for columns to move
     if (ini_parser_->hasSection("column_moves")) {
         bool has_new_order = ini_parser_->hasKey("column_moves.new_order");
@@ -143,7 +158,7 @@ void CSVtoXLTABularConverter::loadSettings()
             std::cerr << "[WARN] column_moves: specify either new_order OR from+to, not both/neither. No columns will be moved.\n";
         }
     } else {
-        std::cout << "No move columns settings found. Default columns order would be kept.\n";
+        std::cout << "No move columns settings found. Default order would be kept.\n";
     }
 
     // Check if columns for prj_info file specified 
@@ -208,8 +223,12 @@ void CSVtoXLTABularConverter::modDefault()
     csv_parser_->deleteColumns(parsed_table_, reversed_list); // Remove columns not used in spreadsheet
 
     // Merge columns
-    auto kp_pos = static_cast<size_t>(ini_parser_->getValue<int>("column_del.kp_col") - 1); // Convert to 0-based index
-    csv_parser_->mergeColumns(parsed_table_, 0, kp_pos);
+    // auto kp_pos = static_cast<size_t>(ini_parser_->getValue<int>("column_del.kp_col") - 1); // Convert to 0-based index
+    // csv_parser_->mergeColumns(parsed_table_, 0, kp_pos);
+    if (has_merge_cols) {
+        std::cout << "Merging columns based on from+into\n";
+        csv_parser_->mergeColumns(parsed_table_, table_config_.merge_from, table_config_.merge_into);
+    }
 
     // Check for column reordering
     switch (has_column_moves_)
