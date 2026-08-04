@@ -66,7 +66,7 @@ std::map<int, std::vector<std::string>> CSVParser::parse_all(int start_row, int 
 
 void CSVParser::mergeColumns(std::map<int, std::vector<std::string>> &table, size_t primary_col, size_t secondary_col)
 {
-    std::cout << "\nMerging columns " << primary_col << " and " << secondary_col << "\n";
+    std::cout << "Merging columns " << primary_col << " and " << secondary_col << "\n";
 
     if (table[1].size() < std::max(primary_col, secondary_col) + 1) {
         std::ostringstream oss;
@@ -84,6 +84,39 @@ void CSVParser::mergeColumns(std::map<int, std::vector<std::string>> &table, siz
             oss << "Row " << row << ": cannot merge non-empty columns " << primary_col << " and " << secondary_col;
             throw std::runtime_error(oss.str());
         }
+    }
+}
+
+void CSVParser::mergeColumns(std::map<int, std::vector<std::string>> &table, const std::vector<int> &from, const std::vector<int> &into)
+{
+    if (table.empty()) return;
+    if (from.size() != into.size())
+        throw std::invalid_argument("[ERROR] mergeColumns: 'from' and 'into' must have equal length");
+    
+    std::set<int> seen_from;
+    std::vector<std::pair<int,int>> merges; // {from, into}
+    if (!from.empty()) {
+        // Validate that 'from' columns are unique and not merging into themselves
+        // Build pairs and sort by 'from' descending — deleting high indices first
+        // prevents earlier deletes from shifting later merge targets
+
+        for (size_t i = 0; i < from.size(); ++i) {
+            if (seen_from.count(from[i]))
+                throw std::runtime_error("column_merge: column " + std::to_string(from[i] + 1) + " listed more than once in 'from'");
+            seen_from.insert(from[i]);
+                
+            if (from[i] == into[i])
+                throw std::runtime_error("column_merge: column " + std::to_string(from[i] + 1) + " cannot merge into itself");
+            
+            merges.emplace_back(from[i], into[i]);
+        }
+
+        std::sort(merges.begin(), merges.end(), [](const auto& a, const auto& b) { return a.first > b.first; });
+        
+        for (const auto& [from, into] : merges) {
+            mergeColumns(table, into, from); // merge from → into
+            deleteColumn(table, from);       // then remove from
+        }                
     }
 }
 
@@ -116,7 +149,7 @@ void CSVParser::reorderColumns(std::map<int, std::vector<std::string>> &table, c
 void CSVParser::reorderColumns(std::map<int, std::vector<std::string>> &table, const std::vector<int>& from, const std::vector<int>& to)
 {
     if (from.size() != to.size())
-        throw std::invalid_argument("reorderColumns: from and to must have equal length");
+        throw std::invalid_argument("[ERROR] reorderColumns: from and to must have equal length");
     if (table.empty()) return;
     int col_count = static_cast<int>(table.begin()->second.size());
 

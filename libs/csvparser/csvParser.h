@@ -32,6 +32,7 @@ public:
     
     // Column interactions
     void mergeColumns(std::map<int, std::vector<std::string>>& table, size_t primary_col, size_t secondary_col); 
+    void mergeColumns(std::map<int, std::vector<std::string>>& table, const std::vector<int>& from, const std::vector<int>& into);
     
     void reorderColumns(std::map<int, std::vector<std::string>>& table, const std::vector<int>& new_order);
     void reorderColumns(std::map<int, std::vector<std::string>>& table, const std::vector<int>& from, const std::vector<int>& to);
