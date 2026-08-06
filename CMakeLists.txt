@@ -17,14 +17,17 @@ set(PROJECT_SOURCES
 
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/libs/csvparser)
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/libs/iniparser)
+add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/libs/utils)
 
 add_executable(${PROJECT_NAME} ${PROJECT_SOURCES})
 
+set_target_properties(Utils PROPERTIES LINKER_LANGUAGE CXX)
 set_property(TARGET ${PROJECT_NAME} PROPERTY CXX_STANDARD 20)
 
 target_include_directories(${PROJECT_NAME} PRIVATE 
     ${CMAKE_CURRENT_SOURCE_DIR}/libs/csvparser
     ${CMAKE_CURRENT_SOURCE_DIR}/libs/iniparser
+    ${CMAKE_CURRENT_SOURCE_DIR}/libs/utils
 )
 
-target_link_libraries(${PROJECT_NAME} PRIVATE csvParser IniParser)
+target_link_libraries(${PROJECT_NAME} PRIVATE csvParser IniParser Utils)
