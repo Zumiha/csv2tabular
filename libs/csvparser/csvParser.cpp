@@ -19,9 +19,9 @@ std::map<int, std::vector<std::string>> CSVParser::parse_all(int start_row, int 
     reset_stream(); // Ensure starting from beginning
 
     // ── Phase 1: confirm parameters and reset state ──────────────────────────
-    std::cerr << "[DBG] parse_all(start_row=" << start_row << ", start_col=" << start_col << ")\n";
-    std::cerr << "[DBG] line_num_ after reset = " << line_num_ << "\n";
-    std::cerr << "[DBG] expected to skip " << (start_row - 1) << std::endl;
+    std::cerr << "[DBG] parse_all\n(start_row=" << start_row << ", start_col=" << start_col << ")\n";
+    std::cerr << "line_num_ after reset = " << line_num_ << "\n";
+    std::cerr << "expected to skip " << (start_row - 1) << std::endl;
 
     // ── Phase 2: dummy skip loop ─────────────────────────────────────────────
     std::string dummy;
@@ -36,28 +36,19 @@ std::map<int, std::vector<std::string>> CSVParser::parse_all(int start_row, int 
         ++skipped;
         // std::cerr << "[DBG] skipped row " << skipped << ": '" << dummy << "'\n";
     }
-    std::cerr << "\n[DBG] skip phase done -- skipped=" << skipped << std::endl;
+    std::cerr << "skip phase done -- skipped=" << skipped << std::endl;
 
     // ── Phase 3: parse rows into table ───────────────────────────────────────
     while (auto row = next_row(start_col)) {
-        // std::cerr << "[DBG] next_row -> line=" << row->line_number
-        //           << " fields=" << row->fields.size()
-        //           << " first='" << (!row->fields.empty() ? row->fields[0] : "<empty>")
-        //           << "'\t";
-
         if (!row->fields.empty()) {
             table[static_cast<int>(row->line_number)] = std::move(row->fields);
-            // std::cerr << "[DBG] added at key=" << row->line_number << "\n";
         } else {
             std::cerr << "[WARN] row " << row->line_number << " has 0 fields — skipped\n";
         }
     }
 
     // ── Phase 4: summary ─────────────────────────────────────────────────────
-    std::cerr << "[DBG] parse_all complete -- table size=" << table.size() << "\n-----------------------------\n";
-    
-    // for (const auto& [k, v] : table)
-    //     std::cerr << "[DBG] table[" << k << "] = " << v.size() << " fields" << " | first='" << (!v.empty() ? v[0] : "<empty>") << "'\n";
+    std::cerr << "parse_all complete -- table size=" << table.size() << "\n-----------------------------\n";
 
     if (table.empty())
         throw std::runtime_error("No data found from row " + std::to_string(start_row) + ", col " + std::to_string(start_col));
@@ -200,6 +191,7 @@ void CSVParser::deleteColumn(std::map<int, std::vector<std::string>> &table, siz
 
 void CSVParser::deleteColumns(std::map<int, std::vector<std::string>> &table, const std::vector<int> &columns_list)
 {
+    std::cout << "[DBG] Deleting specified columns\n";    
     if (table[1].size() < *std::max_element(columns_list.begin(), columns_list.end()) + 1) {
         std::ostringstream oss;
         oss << "Out of range for merge: row has only " << table[1].size() << " columns, but need at least " << *std::max_element(columns_list.begin(), columns_list.end()) + 1;
@@ -265,7 +257,7 @@ void CSVParser::export_csv(const std::map<int, std::vector<std::string>> &table,
     if (out.fail())
         throw std::runtime_error("Write error on file: " + filename);
 
-    std::cout << "[DEBUG] Exported " << table.size() << " rows to: " << filename << "\n";
+    std::cout << "[DBG] Exported " << table.size() << " rows to: " << filename << "\n";
 }
 
 std::optional<dataformat::Row> CSVParser::next_row(int start_col) {
