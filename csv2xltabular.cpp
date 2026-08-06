@@ -57,13 +57,17 @@ TableConfig CSVtoXLTABularConverter::calculateTableConfig(int _header_size) {
 void CSVtoXLTABularConverter::convert()
 {
     loadSettings(); 
-    
-    parsed_table_ = csv_parser_->parse_all(start_row_, start_colum_);
+    std::cout << "[LOG] Parsing CSV file\n";
+    {
+        IndentGuard guard(std::cerr, "\t");
+        parsed_table_ = csv_parser_->parse_all(start_row_, start_colum_);
+    }
+    std::cout << "[LOG] Parsing completed\n";
 
     switch (convert_type_)
     {
     case TableType::Default:
-        std::cout << "\n[LOG] Converting to Default format table\n";
+        std::cout << "[LOG] Converting to Default format table\n";
         modDefault();
         break;
     case TableType::HeadColumn:
@@ -208,42 +212,59 @@ void CSVtoXLTABularConverter::modDefault()
 {   
     // Extract project data from csv if available
     if (has_column_prj) {
-        std::cout << "Extracting project data\n";
+        std::cout << "[LOG] Extracting project data\n";
         auto prj_info_table = extractAndValidate(parsed_table_, table_config_.prj_cols, table_config_.prj_cols_header);
         normalizePrjCols(prj_info_table);
-        csv_parser_->export_csv(prj_info_table, "prj_info.csv");
-        std::cout << "Exported project data to file\n";
+        {
+            IndentGuard guard(std::cout, "\t");
+            csv_parser_->export_csv(prj_info_table, "prj_info.csv");
+        }
+        std::cout << "[LOG] Project data exported\n";
     }
     
     // MTM SpreadSheet table conversion block
-
     // Delete columns not used in spreadsheet
     auto reversed_list = apply1basedTo0based(table_config_.delete_cols); // Apply 0 based counter
     std::sort(reversed_list.rbegin(), reversed_list.rend()); // Sort in descending order to avoid index shifting issues when deleting
-    csv_parser_->deleteColumns(parsed_table_, reversed_list); // Remove columns not used in spreadsheet
-
+    std::cout << "[LOG] Deleting specified columns\n";
+    {
+        IndentGuard guard(std::cout, "\t");
+        csv_parser_->deleteColumns(parsed_table_, reversed_list); // Remove columns not used in spreadsheet
+    }
+    std::cout << "[LOG] Deletion completed\n";
     // Merge columns
     // auto kp_pos = static_cast<size_t>(ini_parser_->getValue<int>("column_del.kp_col") - 1); // Convert to 0-based index
     // csv_parser_->mergeColumns(parsed_table_, 0, kp_pos);
     if (has_merge_cols) {
-        std::cout << "Merging columns based on from+into\n";
-        csv_parser_->mergeColumns(parsed_table_, table_config_.merge_from, table_config_.merge_into);
+        std::cout << "[LOG] Merging specified columns\n";
+        {
+            IndentGuard guard(std::cout, "\t");
+            csv_parser_->mergeColumns(parsed_table_, table_config_.merge_from, table_config_.merge_into);
+        }
+        std::cout << "[LOG] Merging completed\n";
     }
 
     // Check for column reordering
     switch (has_column_moves_)
     {
     case MoveOption::NewOrder:
-        std::cout << "Reordering columns based on new_order\n";
-        csv_parser_->reorderColumns(parsed_table_, table_config_.move_new_order);
+        std::cout << "[LOG] Reordering columns based on new_order\n";
+        {
+            IndentGuard guard(std::cout, "\t");
+            csv_parser_->reorderColumns(parsed_table_, table_config_.move_new_order);
+        }
         break;
     case MoveOption::FromTo:
-        std::cout << "Moving columns based on from+to\n";
-        csv_parser_->reorderColumns(parsed_table_, table_config_.move_from, table_config_.move_to);
+        std::cout << "[LOG] Moving columns based on from+to\n";
+        {
+            IndentGuard guard(std::cout, "\t");
+            csv_parser_->reorderColumns(parsed_table_, table_config_.move_from, table_config_.move_to);
+        }
         break;
     default:
         break;
     }
+    std::cout << "[LOG] Moving columns complete\n";
 
     // Normalize decimal columns
     if (has_column_normalize) {
@@ -255,7 +276,7 @@ void CSVtoXLTABularConverter::modDefault()
     // Check if header needed, attach header
     auto header = ini_parser_->getValue<std::string>("sheet_settings.SpSh_header_val");
     if (header == "true") {
-        std::cout << "Creating header for SpreadSheet" << std::endl;
+        std::cout << "[LOG] Creating header for SpreadSheet" << std::endl;
         auto table_header = ini_parser_->getValue<std::vector<std::string>>("sheet_settings.SpSh_header");
         parsed_table_[0] = table_header;
     }
@@ -382,7 +403,7 @@ bool CSVtoXLTABularConverter::isEmptyRow(const std::vector<std::string> &vec) {
 
 std::map<int, std::vector<std::string>> CSVtoXLTABularConverter::extractAndValidate(const std::map<int, std::vector<std::string>> &table, const std::vector<int> &columns_list, const std::vector<std::string> &header_list)
 {
-    std::cout << "Extracting and validating project data.\n";
+    std::cout << "[LOG] Extracting and validating project data.\n";
 
     auto data_from_table = csv_parser_->extractTable(table, columns_list);
 

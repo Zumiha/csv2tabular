@@ -3,6 +3,7 @@
 
 #include "csvParser.h"
 #include "IniParser.h"
+#include "Utils.h"
 
 #include <memory>
 
@@ -81,7 +82,10 @@ public:
     void exportToFile(const std::string& output_filename = "wt_table.tex");
     void exportToCSV(const std::string& output_filename = "debug.csv") const {
         if (table_converted_) {
-            csv_parser_->export_csv(parsed_table_, output_filename);
+            {
+                IndentGuard guard(std::cout, "\t");
+                csv_parser_->export_csv(parsed_table_, output_filename);
+            }
         } else {
             std::cout << "File was not converted, can't export";
         }
