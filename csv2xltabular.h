@@ -108,12 +108,12 @@ public:
     TableType convert_type_;
     bool table_converted_ = false;
 
+    void draftTable();
     void modDefault();
     void modHeadColumn();
 
     void normalizeDecCols(std::map<int, std::vector<std::string>>& table, const std::vector<int>& columns_list, int precision = 0, const std::string& delimiter = ",");
     void normalizePrjCols(std::map<int, std::vector<std::string>>& table);
-
 
     bool has_column_prj = false;
     bool has_delete_cols = false;

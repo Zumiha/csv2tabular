@@ -64,6 +64,11 @@ void CSVtoXLTABularConverter::convert()
     }
     std::cout << "[LOG] Parsing completed\n";
 
+    std::cout << "[LOG] Converting table\n";
+    draftTable();
+    std::cout << "[LOG] Conversion completed\n";
+    table_converted_ = true;
+
     switch (convert_type_)
     {
     case TableType::Default:
@@ -75,11 +80,10 @@ void CSVtoXLTABularConverter::convert()
         modHeadColumn();
         break;
     default:
-        convert_type_ = TableType::Other;
         std::cout << "Chosen convert type \"" << to_string(convert_type_) << "\" not implemented.";
         break;
     }  
-    table_converted_ = true;
+    
 }
 
 void CSVtoXLTABularConverter::exportToFile(const std::string &output_filename) {    
@@ -118,7 +122,7 @@ void CSVtoXLTABularConverter::loadSettings()
     table_config_.remdnr_min = ini_parser_->getValue<int>("table_settings.min_columns");
 
     // Check for columns to delete
-    if (ini_parser_->hasKey("source_csv.start_row")) {
+    if (ini_parser_->hasKey("column_del.delete_cols")) {
         table_config_.delete_cols = ini_parser_->getValue<std::vector<int>>("column_del.delete_cols");
         has_delete_cols = true;
     }
@@ -208,7 +212,7 @@ void CSVtoXLTABularConverter::loadSettings()
     }
 }
 
-void CSVtoXLTABularConverter::modDefault()
+void CSVtoXLTABularConverter::draftTable()
 {   
     // Extract project data from csv if available
     if (has_column_prj) {
@@ -223,15 +227,18 @@ void CSVtoXLTABularConverter::modDefault()
     }
     
     // MTM SpreadSheet table conversion block
-    // Delete columns not used in spreadsheet
-    auto reversed_list = apply1basedTo0based(table_config_.delete_cols); // Apply 0 based counter
-    std::sort(reversed_list.rbegin(), reversed_list.rend()); // Sort in descending order to avoid index shifting issues when deleting
-    std::cout << "[LOG] Deleting specified columns\n";
-    {
-        IndentGuard guard(std::cout, "\t");
-        csv_parser_->deleteColumns(parsed_table_, reversed_list); // Remove columns not used in spreadsheet
+    if (has_delete_cols) {
+        // Delete columns not used in spreadsheet
+        std::cout << "[LOG] Deleting specified columns\n";
+        {
+            IndentGuard guard(std::cout, "\t");
+            auto reversed_list = apply1basedTo0based(table_config_.delete_cols); // Apply 0 based counter
+            std::sort(reversed_list.rbegin(), reversed_list.rend()); // Sort in descending order to avoid index shifting issues when deleting
+            csv_parser_->deleteColumns(parsed_table_, reversed_list); // Remove columns not used in spreadsheet
+        }
+        std::cout << "[LOG] Deletion completed\n";
     }
-    std::cout << "[LOG] Deletion completed\n";
+    
     // Merge columns
     // auto kp_pos = static_cast<size_t>(ini_parser_->getValue<int>("column_del.kp_col") - 1); // Convert to 0-based index
     // csv_parser_->mergeColumns(parsed_table_, 0, kp_pos);
@@ -280,6 +287,12 @@ void CSVtoXLTABularConverter::modDefault()
         auto table_header = ini_parser_->getValue<std::vector<std::string>>("sheet_settings.SpSh_header");
         parsed_table_[0] = table_header;
     }
+}
+
+
+void CSVtoXLTABularConverter::modDefault()
+{
+
 }
 
 
