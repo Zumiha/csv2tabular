@@ -109,8 +109,7 @@ public:
     bool table_converted_ = false;
 
     void draftTable();
-    void modDefault();
-    void modHeadColumn();
+    void draftLaTeX();
 
     void normalizeDecCols(std::map<int, std::vector<std::string>>& table, const std::vector<int>& columns_list, int precision = 0, const std::string& delimiter = ",");
     void normalizePrjCols(std::map<int, std::vector<std::string>>& table);
@@ -121,6 +120,7 @@ public:
     MoveOption has_column_moves_ = MoveOption::Default;
     std::vector<std::pair<int,int>> column_moves_;
     bool has_column_normalize = false;
+    bool has_column_header = false;
 
     std::vector<int> apply1basedTo0based(const std::vector<int>& one_based_indices); 
 

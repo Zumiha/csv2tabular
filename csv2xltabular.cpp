@@ -10,50 +10,6 @@ CSVtoXLTABularConverter::~CSVtoXLTABularConverter()
 {
 }
 
-TableConfig CSVtoXLTABularConverter::calculateTableConfig(int _header_size) {
-    TableConfig table_settings{};
-    auto effective_columns = _header_size - 1; std::cout << "\neffective_columns: " << effective_columns << "\n";
-    for (int i = this->table_config_.max_columns; i >= 1; --i) {
-        int k = effective_columns / i; 
-        int r = effective_columns % i; 
-        
-        if ((effective_columns / i == 1 && r == 0) || effective_columns / i == 0) {
-            std::cout << "CSV columns fit in one table: " << effective_columns;
-            table_settings.tables_rows_config.push_back({false, 1, effective_columns});
-            table_settings.table_column_width = static_cast<float>(table_settings.columns_sum_width) / table_settings.tables_rows_config[0].col_end;
-            std::cout << " with column width: " << table_settings.table_column_width << " mm\n";
-            return table_settings;    
-        }
-
-        if (r == 0 || r >= this->table_config_.remdnr_min) {
-            std::cout << "\nNumber of tables with " << i << " columns: " << k << "\n";
-
-            int col_start = 1, col_end = i;
-            for (int j = 0; j < k; ++j) {
-                table_settings.tables_rows_config.push_back({false, col_start, col_end});
-                std::cout << "Table " << j + 1 << ": col_start = " << col_start << ", col_end = " << col_end << "\n";
-                col_start += i;
-                col_end += i;
-            }
-
-
-            if (r > 0) {
-                table_settings.tables_rows_config.push_back({true, col_start, col_start + r - 1});
-                std::cout << "Plus table with " << r << " columns: ";
-                // table_settings.remain_columns = r;
-                std::cout << "col_start = " << col_start << ", col_end = " << (col_start + r - 1) << "\n";
-            }
-
-            table_settings.table_column_width = static_cast<float>(table_settings.columns_sum_width) / table_settings.tables_rows_config[0].col_end;
-            std::cout << " with column width: " << table_settings.table_column_width << " mm\n";
-
-            std::cout << std::endl;
-            return table_settings;  
-        }
-    }
-    throw std::runtime_error("calculateTableConfig: no valid column split found");
-}
-
 void CSVtoXLTABularConverter::convert()
 {
     loadSettings(); 
@@ -67,23 +23,7 @@ void CSVtoXLTABularConverter::convert()
     std::cout << "[LOG] Converting table\n";
     draftTable();
     std::cout << "[LOG] Conversion completed\n";
-    table_converted_ = true;
-
-    switch (convert_type_)
-    {
-    case TableType::Default:
-        std::cout << "[LOG] Converting to Default format table\n";
-        modDefault();
-        break;
-    case TableType::HeadColumn:
-        std::cout << "\n[LOG] Converting to Head Column format table\n";
-        modHeadColumn();
-        break;
-    default:
-        std::cout << "Chosen convert type \"" << to_string(convert_type_) << "\" not implemented.";
-        break;
-    }  
-    
+    table_converted_ = true;    
 }
 
 void CSVtoXLTABularConverter::exportToFile(const std::string &output_filename) {    
@@ -91,6 +31,7 @@ void CSVtoXLTABularConverter::exportToFile(const std::string &output_filename) {
     if (!outfile.is_open()) {
         throw std::runtime_error("Failed to open output file: " + output_filename);
     }
+    draftLaTeX();
     outfile << this->latex_string_;
     outfile.close();
 }
@@ -260,6 +201,7 @@ void CSVtoXLTABularConverter::draftTable()
             IndentGuard guard(std::cout, "\t");
             csv_parser_->reorderColumns(parsed_table_, table_config_.move_new_order);
         }
+        std::cout << "[LOG] Moving columns complete\n";
         break;
     case MoveOption::FromTo:
         std::cout << "[LOG] Moving columns based on from+to\n";
@@ -267,50 +209,75 @@ void CSVtoXLTABularConverter::draftTable()
             IndentGuard guard(std::cout, "\t");
             csv_parser_->reorderColumns(parsed_table_, table_config_.move_from, table_config_.move_to);
         }
+        std::cout << "[LOG] Moving columns complete\n";
         break;
     default:
         break;
     }
-    std::cout << "[LOG] Moving columns complete\n";
-
+    
     // Normalize decimal columns
     if (has_column_normalize) {
+        std::cout << "[LOG] Normalizing decimal columns\n";
         for (const auto& [precision, cols] : table_config_.decimal_normalizations) {
             normalizeDecCols(parsed_table_, cols, precision, table_config_.decimal_delimiter);
         }
+        std::cout << "[LOG] Normalization completed\n";
     }
 
     // Check if header needed, attach header
-    auto header = ini_parser_->getValue<std::string>("sheet_settings.SpSh_header_val");
-    if (header == "true") {
-        std::cout << "[LOG] Creating header for SpreadSheet" << std::endl;
-        auto table_header = ini_parser_->getValue<std::vector<std::string>>("sheet_settings.SpSh_header");
-        parsed_table_[0] = table_header;
+    if (ini_parser_->hasSection("sheet_settings")) {
+        if (ini_parser_->hasKey("sheet_settings.SpSh_header_val") && ini_parser_->hasKey("sheet_settings.SpSh_header")) {
+            auto header = ini_parser_->getValue<std::string>("sheet_settings.SpSh_header_val");
+            if (header == "true") {
+                std::cout << "[LOG] Creating header for SpreadSheet" << std::endl;
+                auto table_header = ini_parser_->getValue<std::vector<std::string>>("sheet_settings.SpSh_header");
+                parsed_table_[0] = table_header;
+            }
+            has_column_header = true;
+        } else {
+            std::cout << "Some header settings missing. No header will be created.\n";
+        }
+    } else {
+        std::cout << "No header settings found. No header will be created.\n";
     }
 }
 
 
-void CSVtoXLTABularConverter::modDefault()
+void CSVtoXLTABularConverter::draftLaTeX()
 {
+    // Reset LaTeX string
+    latex_string_.clear();
 
-}
+    std::vector<std::string> header;
+    switch (convert_type_)
+    {
+    case TableType::Default:
+        std::cout << "[LOG] Drafting LaTeX as Default format table\n";
+        break;
+    case TableType::HeadColumn:
+        std::cout << "\n[LOG] Drafting LaTeX as Head Column format table\n";
+        break;
+    default:
+        std::cout << "Chosen convert type \"" << to_string(convert_type_) << "\" not implemented.";
+        return;
+    }
 
-
-void CSVtoXLTABularConverter::modHeadColumn()
-{
-    // WT measurement table conversion block
-    auto header = parsed_table_[1];
+    if (has_column_header) {
+        // If header settings are available, use it as the first row for LaTeX rendering
+        header = parsed_table_[0];
+    } else {
+        // If no header settings, use the first row of the parsed table as the header for LaTeX rendering
+        header = parsed_table_[1];
+    }
+    
+    // Table measurement conversion block
     int header_size = static_cast<int>(header.size()); 
     std::cout << "\nheader_size: " << header_size << "\n";
-
-    int table_count, table_rows, column_start, column_end;
-    column_start =  1;
-
     auto table_config_ = calculateTableConfig(header_size);
 
     std::string header_line;
     latex_string_ +="\\newcounter{tablefigure}[section]\n"
-                    "\\renewcommand{\\thetablefigure}{\\thesection.\\arabic{tablefigure}}\n\n";  
+                    "\\renewcommand{\\thetablefigure}{\\thesection.\\arabic{tablefigure}}\n\n";
     for (int i = 0; i < table_config_.tables_rows_config.size(); i++) {
         // Render header line
         int cell_start = table_config_.tables_rows_config[i].col_start;
@@ -336,6 +303,8 @@ void CSVtoXLTABularConverter::modHeadColumn()
             header_line
         );
     }
+
+    std::cout << "[LOG] Drafting LaTeX completed\n";
 }
 
 void CSVtoXLTABularConverter::normalizeDecCols(std::map<int, std::vector<std::string>> &table, const std::vector<int> &columns_list, int precision, const std::string &delimiter)
@@ -478,28 +447,42 @@ void CSVtoXLTABularConverter::tableRender(
     const std::string& header_line_
 ) {
     auto table_width = end_cell - start_cell + 1;
+    const bool has_row_header = (convert_type_ == TableType::HeadColumn);
+    
+    // Row-header column ("|c|") only exists for HeadColumn tables
+    std::string col_spec = (has_row_header ? std::string("|c|") : std::string()) + "*{" + std::to_string(table_width) + "}{m{" + std::to_string(_column_width) + "mm}|}";
+
+    // +1 accounts for the row-header column when present
+    int total_cols = has_row_header ? table_width + 1 : table_width;
+
     latex_string_ +="\\setlength\\LTleft{0cm}\n"
                     "\\stepcounter{tablefigure}\n"
                     "\\noindent Таблица~\\thetablefigure: Измерения толщины стенки~\\vspace{-0.75em}\n"
-                    "\\begin{xltabular}{" + std::to_string(_table_width) + "mm}{|c|*{" + std::to_string(table_width) + "}{m{" + std::to_string(_column_width) + "mm}|}}\n"
-                    "\\hline\n"
-                    "\\diagbox{час}{L,мм} & ";
+                    "\\begin{xltabular}{" + std::to_string(_table_width) + "mm}{" + col_spec + "}\n"
+                    "\\hline\n";
+    // Check if the table has a row header column and paste diagonal box
+    if (has_row_header) latex_string_ += "\\diagbox{час}{L,мм} & ";
     latex_string_ += header_line_;
     latex_string_ +="\\endfirsthead\n"
-                    "\\multicolumn{" + std::to_string(table_width + 1) + "}{@{}l}{\\small\\sl продолжение на предыдущей странице}\\\\ \\hline\n"
-                    "\\diagbox{час}{L,мм} & ";
+                    "\\multicolumn{" + std::to_string(total_cols) + "}{@{}l}{\\small\\sl продолжение на предыдущей странице}\\\\ \\hline\n";
+    // Check if the table has a row header column and paste diagonal box
+    if (has_row_header) latex_string_ += "\\diagbox{час}{L,мм} & ";
     latex_string_ += header_line_;
     latex_string_ +="\\endhead\n"
-                    "\\multicolumn{" + std::to_string(table_width + 1) + "}{r}{\\small\\sl продолжение на следующей странице}\\\\ \n"
+                    "\\multicolumn{" + std::to_string(total_cols) + "}{r}{\\small\\sl продолжение на следующей странице}\\\\ \n"
                     "\\endfoot\n"
                     "\\endlastfoot\n";
+                
     // Fill table rows
+    int header_row = has_column_header ? 0 : 1; // Header row is 0 if header added in settings, if no header in settings then 1
     for (const auto& [row_num, fields] : table_) {
-        if (row_num == 1) {
+        if (row_num == header_row) {
             continue; // Skip header row
         }
-        // Header Row input before each line
-        latex_string_ += (fields[0] + " & ");
+        // If need Row Header
+        if (has_row_header) {
+            latex_string_ += (fields[0] + " & ");
+        }
 
         for (size_t i = start_cell; i < end_cell + 1; ++i) {
             latex_string_ += fields[i];
@@ -508,8 +491,61 @@ void CSVtoXLTABularConverter::tableRender(
             } else {
                 latex_string_ += "\\\\ \\hline\n";
             }
-
         }
     }
     latex_string_ += "\\end{xltabular}%\n\\vspace{0em}\n\n";
+}
+
+TableConfig CSVtoXLTABularConverter::calculateTableConfig(int _header_size) {
+    TableConfig table_settings{};
+    // HeadColumn reserves fields[0] as the row label, so data columns start at 1;
+    // Default has no row-label column, so data columns start at 0.
+    const int offset = (convert_type_ == TableType::HeadColumn) ? 1 : 0;
+    auto effective_columns = _header_size - offset; 
+    std::cout << "\neffective_columns: " << effective_columns << "\n";
+
+    // max_columns is the max PHYSICAL columns per page (includes the row-header
+    // column for HeadColumn). Data-column budget per page is reduced by offset.
+    const int max_data_columns = this->table_config_.max_columns - offset;
+
+    for (int i = max_data_columns; i >= 1; --i) {
+        // Iterate from max_columns down to 1 to find the largest number of columns that can fit in a table
+        int k = effective_columns / i; // Number of full tables with i columns
+        int r = effective_columns % i; // Remaining columns that don't fit in full tables
+
+        // One full table without remaining columns or no full tables
+        if ((k == 1 && r == 0) || k == 0) {
+            std::cout << "CSV columns fit in one table: " << effective_columns;
+            table_settings.tables_rows_config.push_back({false, offset, offset + effective_columns - 1});
+            table_settings.table_column_width = static_cast<float>(table_settings.columns_sum_width) / effective_columns;
+            std::cout << " with column width: " << table_settings.table_column_width << " mm\n";
+            return table_settings;
+        }
+
+        // If there are multiple tables without remaining columns or the remaining columns are above the minimum threshold
+        if (r == 0 || r >= this->table_config_.remdnr_min) {
+            std::cout << "\nNumber of tables with " << i << " columns: " << k << "\n";
+
+            int col_start = offset, col_end = offset + i - 1;
+            for (int j = 0; j < k; ++j) {
+                table_settings.tables_rows_config.push_back({false, col_start, col_end});
+                std::cout << "Table " << j + 1 << ": col_start = " << col_start << ", col_end = " << col_end << "\n";
+                col_start += i;
+                col_end += i;
+            }
+
+            if (r > 0) {
+                table_settings.tables_rows_config.push_back({true, col_start, col_start + r - 1});
+                std::cout << "Plus table with " << r << " columns: ";
+                std::cout << "col_start = " << col_start << ", col_end = " << (col_start + r - 1) << "\n";
+            }
+            
+            table_settings.table_column_width = static_cast<float>(table_settings.columns_sum_width) / i;
+            std::cout << " with column width: " << table_settings.table_column_width << " mm\n";
+
+            std::cout << std::endl;
+            return table_settings;
+        }
+    }
+    throw std::runtime_error("calculateTableConfig: no valid column split found");
 }
