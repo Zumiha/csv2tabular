@@ -22,7 +22,7 @@ struct TablesRows {
 class TableConfig {
 public:
     std::vector<TablesRows> tables_rows_config;
-    
+    std::string table_title = "default_title";
     int max_columns = 12; // Render default max columns per page
     int remdnr_min = 8; // Minimum remainder
 

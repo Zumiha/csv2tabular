@@ -58,7 +58,12 @@ void CSVtoXLTABularConverter::loadSettings()
         std::cout << "No start column settings found.\n"; // Using default value
     }
 
-    // Load settings for LaTeX min-max columns
+    // Load settings for LaTeX
+    if (ini_parser_->hasKey("table_settings.table_title")) {
+        table_config_.table_title = ini_parser_->getValue<std::string>("table_settings.table_title");
+    } else {
+        std::cout << "No table title settings found. Using default title.\n"; // Using default value
+    }
     table_config_.max_columns = ini_parser_->getValue<int>("table_settings.max_columns");
     table_config_.remdnr_min = ini_parser_->getValue<int>("table_settings.min_columns");
 
@@ -447,27 +452,39 @@ void CSVtoXLTABularConverter::tableRender(
     const std::string& header_line_
 ) {
     auto table_width = end_cell - start_cell + 1;
-    const bool has_row_header = (convert_type_ == TableType::HeadColumn);
+    std::string table_title;
+    std::string col_spec;
+    std::string diagbox;
+    int total_cols = 0;
+    switch (convert_type_)
+    {
+        case TableType::Default:
+            total_cols = table_width;
+            // for Default tables repeated pattern
+            col_spec = "*{" + std::to_string(table_size) + "}{m{" + std::to_string(_column_width) + "mm}|}";
+            diagbox = "";
+            break;
+        case TableType::HeadColumn:
+            total_cols = table_width + 1; // +1 for the row-header column
+            // Row-header column ("|c|") only exists for HeadColumn tables
+            col_spec = "|c|*{" + std::to_string(table_size) + "}{m{" + std::to_string(_column_width) + "mm}|}";
+            diagbox = "\\diagbox{час}{L,мм} & ";
+            break;
+        default:
+            throw std::runtime_error("tableRender: unsupported TableType");
+    }        
     
-    // Row-header column ("|c|") only exists for HeadColumn tables
-    std::string col_spec = (has_row_header ? std::string("|c|") : std::string()) + "*{" + std::to_string(table_width) + "}{m{" + std::to_string(_column_width) + "mm}|}";
-
-    // +1 accounts for the row-header column when present
-    int total_cols = has_row_header ? table_width + 1 : table_width;
+    const bool has_row_header = (convert_type_ == TableType::HeadColumn);
 
     latex_string_ +="\\setlength\\LTleft{0cm}\n"
                     "\\stepcounter{tablefigure}\n"
-                    "\\noindent Таблица~\\thetablefigure: Измерения толщины стенки~\\vspace{-0.75em}\n"
+                    "\\noindent Таблица~\\thetablefigure: " + table_config_.table_title + "~\\vspace{-0.75em}\n"
                     "\\begin{xltabular}{" + std::to_string(_table_width) + "mm}{" + col_spec + "}\n"
                     "\\hline\n";
-    // Check if the table has a row header column and paste diagonal box
-    if (has_row_header) latex_string_ += "\\diagbox{час}{L,мм} & ";
-    latex_string_ += header_line_;
+    latex_string_ += diagbox + header_line_;
     latex_string_ +="\\endfirsthead\n"
                     "\\multicolumn{" + std::to_string(total_cols) + "}{@{}l}{\\small\\sl продолжение на предыдущей странице}\\\\ \\hline\n";
-    // Check if the table has a row header column and paste diagonal box
-    if (has_row_header) latex_string_ += "\\diagbox{час}{L,мм} & ";
-    latex_string_ += header_line_;
+    latex_string_ += diagbox + header_line_;
     latex_string_ +="\\endhead\n"
                     "\\multicolumn{" + std::to_string(total_cols) + "}{r}{\\small\\sl продолжение на следующей странице}\\\\ \n"
                     "\\endfoot\n"
