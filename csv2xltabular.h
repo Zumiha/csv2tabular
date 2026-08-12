@@ -12,9 +12,9 @@
 #include <string>
 
 #include <algorithm>
+#include <iomanip>
 
 struct TablesRows {
-    bool remain_table = false;
     int col_start;
     int col_end;
 };
@@ -27,8 +27,8 @@ public:
     int remdnr_min = 8; // Minimum remainder
 
     int table_width = 180; // mm, total width of the table in LaTeX
-    int columns_sum_width = 102; // mm, sum of column widths (excluding the first column)
-    float table_column_width; // mm, width of each column in the main tables
+    std::vector<float> column_widths; // indexed by RAW field position 0.._header_size-1
+    float row_header_width;    // actual width used for the row-header column (HeadColumn only)    
 
     std::vector<int> prj_cols;
     std::vector<std::string> prj_cols_header;
@@ -121,6 +121,9 @@ public:
     std::vector<std::pair<int,int>> column_moves_;
     bool has_column_normalize = false;
     bool has_column_header = false;
+    bool has_custom_column_widths_ = false;
+    std::vector<int> custom_column_number_; // 0-based field indices (converted from ini)
+    std::vector<int> custom_column_width_;  // corresponding widths in mm
 
     std::vector<int> apply1basedTo0based(const std::vector<int>& one_based_indices); 
 
@@ -135,13 +138,14 @@ public:
         const std::vector<std::string>& header_
     );
     void tableRender(
-        int _table_width, 
-        float _column_width, 
+        int _table_width,
         int table_size, 
         int start_cell, 
         int end_cell, 
         const std::map<int, std::vector<std::string>>& table_, 
-        const std::string& header_line_
+        const std::string& header_line_,
+        const std::vector<float>& column_widths,
+        float row_header_width
     );
     TableConfig calculateTableConfig(int _header_size);
 };
