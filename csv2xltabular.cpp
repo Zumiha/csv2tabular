@@ -58,15 +58,6 @@ void CSVtoXLTABularConverter::loadSettings()
         std::cout << "No start column settings found.\n"; // Using default value
     }
 
-    // Load settings for LaTeX
-    if (ini_parser_->hasKey("table_settings.table_title")) {
-        table_config_.table_title = ini_parser_->getValue<std::string>("table_settings.table_title");
-    } else {
-        std::cout << "No table title settings found. Using default title.\n"; // Using default value
-    }
-    table_config_.max_columns = ini_parser_->getValue<int>("table_settings.max_columns");
-    table_config_.remdnr_min = ini_parser_->getValue<int>("table_settings.min_columns");
-
     // Check for columns to delete
     if (ini_parser_->hasKey("column_del.delete_cols")) {
         table_config_.delete_cols = ini_parser_->getValue<std::vector<int>>("column_del.delete_cols");
@@ -155,6 +146,24 @@ void CSVtoXLTABularConverter::loadSettings()
         has_column_normalize = true;
     } else { 
         std::cout << "No decimal precision columns settings found. Values will not be normalized.\n"; 
+    }
+
+    // =======================================
+    // Load settings for LaTeX
+    if (ini_parser_->hasSection("table_settings")) {
+        if (ini_parser_->hasKey("table_settings.table_title")) {
+            table_config_.table_title = ini_parser_->getValue<std::string>("table_settings.table_title");
+        } else {
+            std::cout << "No table title settings found. Using default title.\n"; // Using default value
+        }
+
+        if (ini_parser_->hasKey("table_settings.table_width")) {
+            table_config_.table_width = ini_parser_->getValue<int>("table_settings.table_width");
+        } else {
+            std::cout << "No table width settings found. Using default width.\n"; // Using default value
+        }
+        table_config_.max_columns = ini_parser_->getValue<int>("table_settings.max_columns");
+        table_config_.remdnr_min = ini_parser_->getValue<int>("table_settings.min_columns");
     }
 }
 
@@ -295,15 +304,15 @@ void CSVtoXLTABularConverter::draftLaTeX()
     // Table measurement conversion block
     int header_size = static_cast<int>(header.size()); 
     std::cout << "\nheader_size: " << header_size << "\n";
-    auto table_config_ = calculateTableConfig(header_size);
+    auto calculated_table_configuration = calculateTableConfig(header_size);
 
     std::string header_line;
     latex_string_ +="\\newcounter{tablefigure}[section]\n"
                     "\\renewcommand{\\thetablefigure}{\\thesection.\\arabic{tablefigure}}\n\n";
-    for (int i = 0; i < table_config_.tables_rows_config.size(); i++) {
+    for (int i = 0; i < calculated_table_configuration.tables_rows_config.size(); i++) {
         // Render header line
-        int cell_start = table_config_.tables_rows_config[i].col_start;
-        int cell_end = table_config_.tables_rows_config[i].col_end;
+        int cell_start = calculated_table_configuration.tables_rows_config[i].col_start;
+        int cell_end = calculated_table_configuration.tables_rows_config[i].col_end;
         int table_size = cell_end - cell_start + 1;
 
         std::cout << "\ncolumn_start: " << cell_start << " column_end: " << cell_end << "\n";
@@ -316,14 +325,14 @@ void CSVtoXLTABularConverter::draftLaTeX()
         // LaTeX tabular format
 
         tableRender(
-            table_config_.table_width,
+            calculated_table_configuration.table_width,
             table_size, 
             cell_start, 
             cell_end, 
             parsed_table_, 
             header_line,
-            table_config_.column_widths,
-            table_config_.row_header_width
+            calculated_table_configuration.column_widths,
+            calculated_table_configuration.row_header_width
         );
     }
 
@@ -548,7 +557,7 @@ void CSVtoXLTABularConverter::tableRender(
 }
 
 TableConfig CSVtoXLTABularConverter::calculateTableConfig(int _header_size) {
-    TableConfig table_settings{};
+    TableConfig table_settings = this->table_config_;
     const int offset = (convert_type_ == TableType::HeadColumn) ? 1 : 0;
 
     // ── Step 1: resolve row-header width FIRST (default, or custom override) ──
