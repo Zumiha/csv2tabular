@@ -1,32 +1,45 @@
 #include "csv2xltabular.h"
 
-CSVtoXLTABularConverter::CSVtoXLTABularConverter(const std::string &csv_filename, const std::string &ini_filename) {
+#include <clocale>
+
+CSVtoXLTABularConverter::CSVtoXLTABularConverter(const std::string& csv_filename, const std::string& ini_filename)
+    : csv_filename_(csv_filename)
+{
     ini_parser_ = std::make_unique<IniParser>(ini_filename);
-    csv_parser_ = std::make_unique<CSVParser>(csv_filename);
-    std::setlocale(LC_ALL, "Russian"); // Set locale to the user's environment default    
+    std::setlocale(LC_ALL, "Russian"); // Set locale to the user's environment default
 }
 
-CSVtoXLTABularConverter::~CSVtoXLTABularConverter()
-{
-}
+CSVtoXLTABularConverter::~CSVtoXLTABularConverter() = default;
 
 void CSVtoXLTABularConverter::convert()
 {
-    loadSettings(); 
+    if (!ini_parser_)
+        throw std::runtime_error("convert(): no ini file loaded — use the 2-arg constructor, or call Convert() directly with a ConversionSettings");
+
+    settings_ = LoadSettingsFromIni(*ini_parser_);
+    Convert(csv_filename_, settings_);
+}
+
+void CSVtoXLTABularConverter::Convert(const std::string& csv_filename, const ConversionSettings& settings)
+{
+    settings_ = settings;
+    csv_parser_ = std::make_unique<CSVParser>(csv_filename);
+
     std::cout << "[LOG] Parsing CSV file\n";
     {
         IndentGuard guard(std::cerr, "\t");
-        parsed_table_ = csv_parser_->parse_all(start_row_, start_colum_);
+        parsed_table_ = csv_parser_->parse_all(settings_.start_row, settings_.start_col);
     }
     std::cout << "[LOG] Parsing completed\n";
 
     std::cout << "[LOG] Converting table\n";
     draftTable();
     std::cout << "[LOG] Conversion completed\n";
-    table_converted_ = true;    
+    table_converted_ = true;
 }
 
-void CSVtoXLTABularConverter::exportToFile(const std::string &output_filename) {    
+void CSVtoXLTABularConverter::exportToFile(const std::string& output_filename)
+{
     std::ofstream outfile(output_filename);
     if (!outfile.is_open()) {
         throw std::runtime_error("Failed to open output file: " + output_filename);
@@ -36,143 +49,12 @@ void CSVtoXLTABularConverter::exportToFile(const std::string &output_filename) {
     outfile.close();
 }
 
-void CSVtoXLTABularConverter::loadSettings()
-{
-    std::cout << "\n[LOG] Loading settings from INI\n";
-    if (ini_parser_->hasKey("source_csv.type")) {
-        convert_type_ = static_cast<TableType>(ini_parser_->getValue<int>("source_csv.type"));
-    } else {
-        std::cout << "No document type settings found. Converting to default type.\n"; // Using default type
-        convert_type_ = TableType::Default;
-    }
-
-    // Check for start row-column
-    if (ini_parser_->hasKey("source_csv.start_row")) {
-        start_row_ = ini_parser_->getValue<int>("source_csv.start_row");
-    } else {
-        std::cout << "No start row settings found.\n"; // Using default value
-    }
-    if (ini_parser_->hasKey("source_csv.start_column")) {
-        start_colum_ = ini_parser_->getValue<int>("source_csv.start_column");
-    } else {
-        std::cout << "No start column settings found.\n"; // Using default value
-    }
-
-    // Check for columns to delete
-    if (ini_parser_->hasKey("column_del.delete_cols")) {
-        table_config_.delete_cols = ini_parser_->getValue<std::vector<int>>("column_del.delete_cols");
-        has_delete_cols = true;
-    }
-
-    // Check for columns to merge
-    if (ini_parser_->hasSection("column_merge")) {
-        bool has_merge_from = ini_parser_->hasKey("column_merge.from");
-        bool has_merge_into = ini_parser_->hasKey("column_merge.into");
-
-        if (has_merge_from && has_merge_into) {
-            table_config_.merge_from = apply1basedTo0based(ini_parser_->getValue<std::vector<int>>("column_merge.from"));
-            table_config_.merge_into = apply1basedTo0based(ini_parser_->getValue<std::vector<int>>("column_merge.into"));
-            if (table_config_.merge_from.size() != table_config_.merge_into.size()) {
-                std::cerr << "[WARN] column_merge: from-into parameters need to have same number of columns. No columns will be merged." << std::endl;
-            } else {
-                has_merge_cols = true;
-            }
-        } else {
-            std::cerr << "[WARN] column_merge: failed to detect from-into columns to merge. No columns will be merged.\n" << std::endl;
-        }
-    } else {
-        std::cout << "No merge columns settings found. Default order would be kept.\n";
-    }
-
-    // Check for columns to move
-    if (ini_parser_->hasSection("column_moves")) {
-        bool has_new_order = ini_parser_->hasKey("column_moves.new_order");
-        bool has_from_to   = ini_parser_->hasKey("column_moves.from") && ini_parser_->hasKey("column_moves.to");
-
-        if (has_new_order ^ has_from_to) {
-            // Exactly one approach configured — load accordingly
-            if (has_new_order) {
-                has_column_moves_ = MoveOption::NewOrder;
-                table_config_.move_new_order = apply1basedTo0based(ini_parser_->getValue<std::vector<int>>("column_moves.new_order"));
-            } else {
-                has_column_moves_ = MoveOption::FromTo;
-                table_config_.move_from = apply1basedTo0based(ini_parser_->getValue<std::vector<int>>("column_moves.from"));
-                table_config_.move_to = apply1basedTo0based(ini_parser_->getValue<std::vector<int>>("column_moves.to"));
-            }
-        } else {
-            std::cerr << "[WARN] column_moves: specify either new_order OR from+to, not both/neither. No columns will be moved.\n";
-        }
-    } else {
-        std::cout << "No move columns settings found. Default order would be kept.\n";
-    }
-
-    // Check if columns for prj_info file specified 
-    if (ini_parser_->hasKey("column_prj.prj_cols") && ini_parser_->hasKey("column_prj.prj_cols_header")) {
-        table_config_.prj_cols = ini_parser_->getValue<std::vector<int>>("column_prj.prj_cols");
-        table_config_.prj_cols_header = ini_parser_->getValue<std::vector<std::string>>("column_prj.prj_cols_header");
-        has_column_prj = true;
-    } else {
-        std::cout << "No project columns settings found. No project info file will be created.\n"; 
-    }
-
-    // Check if columns for decimal normalization specified
-    if (ini_parser_->hasSection("normalize_decimals")) {
-        auto columns   = apply1basedTo0based(ini_parser_->getValue<std::vector<int>>("normalize_decimals.columns"));
-        auto precision = ini_parser_->getValue<std::vector<int>>("normalize_decimals.precision");
-        std::string delimiter;
-        if (ini_parser_->hasKey("normalize_decimals.delimiter")) {
-            delimiter = ini_parser_->getValue<std::string>("normalize_decimals.delimiter");
-        } else {
-            delimiter = ",";
-        }
-
-        if (columns.size() != precision.size())
-            throw std::runtime_error("normalize_decimals: 'columns' and 'precision' must have equal length");
-        
-        // Group columns by precision — mirrors existing call-site pattern
-        std::set<int> seen_columns;
-        std::map<int, std::vector<int>> grouped; // precision → column list
-        for (size_t i = 0; i < columns.size(); ++i) {
-            if (seen_columns.count(columns[i]))
-                throw std::runtime_error("normalize_decimals: column " +
-                                        std::to_string(columns[i] + 1) + // report as 1-based for user
-                                        " listed more than once");
-
-            seen_columns.insert(columns[i]);
-            grouped[precision[i]].push_back(columns[i]);
-        }
-        table_config_.decimal_normalizations = std::move(grouped);
-        table_config_.decimal_delimiter = delimiter;
-        has_column_normalize = true;
-    } else { 
-        std::cout << "No decimal precision columns settings found. Values will not be normalized.\n"; 
-    }
-
-    // =======================================
-    // Load settings for LaTeX
-    if (ini_parser_->hasSection("table_settings")) {
-        if (ini_parser_->hasKey("table_settings.table_title")) {
-            table_config_.table_title = ini_parser_->getValue<std::string>("table_settings.table_title");
-        } else {
-            std::cout << "No table title settings found. Using default title.\n"; // Using default value
-        }
-
-        if (ini_parser_->hasKey("table_settings.table_width")) {
-            table_config_.table_width = ini_parser_->getValue<int>("table_settings.table_width");
-        } else {
-            std::cout << "No table width settings found. Using default width.\n"; // Using default value
-        }
-        table_config_.max_columns = ini_parser_->getValue<int>("table_settings.max_columns");
-        table_config_.remdnr_min = ini_parser_->getValue<int>("table_settings.min_columns");
-    }
-}
-
 void CSVtoXLTABularConverter::draftTable()
-{   
+{
     // Extract project data from csv if available
-    if (has_column_prj) {
+    if (!settings_.prj_cols.empty()) {
         std::cout << "[LOG] Extracting project data\n";
-        auto prj_info_table = extractAndValidate(parsed_table_, table_config_.prj_cols, table_config_.prj_cols_header);
+        auto prj_info_table = extractAndValidate(parsed_table_, settings_.prj_cols, settings_.prj_cols_header);
         normalizePrjCols(prj_info_table);
         {
             IndentGuard guard(std::cout, "\t");
@@ -180,99 +62,65 @@ void CSVtoXLTABularConverter::draftTable()
         }
         std::cout << "[LOG] Project data exported\n";
     }
-    
+
     // MTM SpreadSheet table conversion block
-    if (has_delete_cols) {
+    if (!settings_.delete_cols.empty()) {
         // Delete columns not used in spreadsheet
         std::cout << "[LOG] Deleting specified columns\n";
         {
             IndentGuard guard(std::cout, "\t");
-            auto reversed_list = apply1basedTo0based(table_config_.delete_cols); // Apply 0 based counter
+            auto reversed_list = Apply1BasedTo0Based(settings_.delete_cols); // Apply 0 based counter
             std::sort(reversed_list.rbegin(), reversed_list.rend()); // Sort in descending order to avoid index shifting issues when deleting
             csv_parser_->deleteColumns(parsed_table_, reversed_list); // Remove columns not used in spreadsheet
         }
         std::cout << "[LOG] Deletion completed\n";
     }
-    
+
     // Merge columns
-    // auto kp_pos = static_cast<size_t>(ini_parser_->getValue<int>("column_del.kp_col") - 1); // Convert to 0-based index
-    // csv_parser_->mergeColumns(parsed_table_, 0, kp_pos);
-    if (has_merge_cols) {
+    if (!settings_.merge_from.empty()) {
         std::cout << "[LOG] Merging specified columns\n";
         {
             IndentGuard guard(std::cout, "\t");
-            csv_parser_->mergeColumns(parsed_table_, table_config_.merge_from, table_config_.merge_into);
+            csv_parser_->mergeColumns(parsed_table_, settings_.merge_from, settings_.merge_into);
         }
         std::cout << "[LOG] Merging completed\n";
     }
 
     // Check for column reordering
-    switch (has_column_moves_)
-    {
-    case MoveOption::NewOrder:
+    if (!settings_.move_new_order.empty()) {
         std::cout << "[LOG] Reordering columns based on new_order\n";
         {
             IndentGuard guard(std::cout, "\t");
-            csv_parser_->reorderColumns(parsed_table_, table_config_.move_new_order);
+            csv_parser_->reorderColumns(parsed_table_, settings_.move_new_order);
         }
         std::cout << "[LOG] Moving columns complete\n";
-        break;
-    case MoveOption::FromTo:
+    } else if (!settings_.move_from.empty()) {
         std::cout << "[LOG] Moving columns based on from+to\n";
         {
             IndentGuard guard(std::cout, "\t");
-            csv_parser_->reorderColumns(parsed_table_, table_config_.move_from, table_config_.move_to);
+            csv_parser_->reorderColumns(parsed_table_, settings_.move_from, settings_.move_to);
         }
         std::cout << "[LOG] Moving columns complete\n";
-        break;
-    default:
-        break;
     }
-    
+
     // Normalize decimal columns
-    if (has_column_normalize) {
+    if (!settings_.decimal_normalizations.empty()) {
         std::cout << "[LOG] Normalizing decimal columns\n";
-        for (const auto& [precision, cols] : table_config_.decimal_normalizations) {
-            normalizeDecCols(parsed_table_, cols, precision, table_config_.decimal_delimiter);
+        for (const auto& [precision, cols] : settings_.decimal_normalizations) {
+            normalizeDecCols(parsed_table_, cols, precision, settings_.decimal_delimiter);
         }
         std::cout << "[LOG] Normalization completed\n";
     }
 
-    // Check if header needed, attach header
-    if (ini_parser_->hasSection("sheet_settings")) {
-        if (ini_parser_->hasKey("sheet_settings.SpSh_header_val") && ini_parser_->hasKey("sheet_settings.SpSh_header")) {
-            auto header = ini_parser_->getValue<std::string>("sheet_settings.SpSh_header_val");
-            if (header == "true") {
-                std::cout << "[LOG] Creating header for SpreadSheet" << std::endl;
-                auto table_header = ini_parser_->getValue<std::vector<std::string>>("sheet_settings.SpSh_header");
-                parsed_table_[0] = table_header;
-            }
-            has_column_header = true;
-        } else {
-            std::cout << "Some header settings missing. No header will be created.\n";
-        }
-    } else {
-        std::cout << "No header settings found. No header will be created.\n";
+    // Attach header, if enabled
+    if (settings_.include_header) {
+        std::cout << "[LOG] Creating header for SpreadSheet" << std::endl;
+        parsed_table_[0] = settings_.sheet_header;
     }
 
-    // Check for custom column widths
-    if (ini_parser_->hasKey("table_settings.column_number") && ini_parser_->hasKey("table_settings.column_width")) {
-        auto col_nums = ini_parser_->getValue<std::vector<int>>("table_settings.column_number");
-        auto col_widths = ini_parser_->getValue<std::vector<int>>("table_settings.column_width");
-
-        if (!col_nums.empty() && col_nums.size() == col_widths.size()) {
-            custom_column_number_ = apply1basedTo0based(col_nums);
-            custom_column_width_ = col_widths;
-            has_custom_column_widths_ = true;
-        } else {
-            std::cerr << "[WARN] table_settings: column_number and column_width must be non-empty and equal length ("
-                    << col_nums.size() << " vs " << col_widths.size() << "). Falling back to uniform column width.\n";
-        }
-    } else {
-        std::cout << "No custom column width settings found. Using uniform column width.\n";
-    }
+    // Custom column widths were already validated (non-empty + equal length)
+    // by LoadSettingsFromIni() / ValidateSettings() before reaching here.
 }
-
 
 void CSVtoXLTABularConverter::draftLaTeX()
 {
@@ -280,7 +128,7 @@ void CSVtoXLTABularConverter::draftLaTeX()
     latex_string_.clear();
 
     std::vector<std::string> header;
-    switch (convert_type_)
+    switch (settings_.convert_type)
     {
     case TableType::Default:
         std::cout << "[LOG] Drafting LaTeX as Default format table\n";
@@ -289,27 +137,27 @@ void CSVtoXLTABularConverter::draftLaTeX()
         std::cout << "\n[LOG] Drafting LaTeX as Head Column format table\n";
         break;
     default:
-        std::cout << "Chosen convert type \"" << to_string(convert_type_) << "\" not implemented.";
+        std::cout << "Chosen convert type \"" << to_string(settings_.convert_type) << "\" not implemented.";
         return;
     }
 
-    if (has_column_header) {
+    if (settings_.include_header) {
         // If header settings are available, use it as the first row for LaTeX rendering
         header = parsed_table_[0];
     } else {
         // If no header settings, use the first row of the parsed table as the header for LaTeX rendering
         header = parsed_table_[1];
     }
-    
+
     // Table measurement conversion block
-    int header_size = static_cast<int>(header.size()); 
+    int header_size = static_cast<int>(header.size());
     std::cout << "\nheader_size: " << header_size << "\n";
     auto calculated_table_configuration = calculateTableConfig(header_size);
 
     std::string header_line;
-    latex_string_ +="\\newcounter{tablefigure}[section]\n"
-                    "\\renewcommand{\\thetablefigure}{\\thesection.\\arabic{tablefigure}}\n\n";
-    for (int i = 0; i < calculated_table_configuration.tables_rows_config.size(); i++) {
+    latex_string_ += "\\newcounter{tablefigure}[section]\n"
+                      "\\renewcommand{\\thetablefigure}{\\thesection.\\arabic{tablefigure}}\n\n";
+    for (size_t i = 0; i < calculated_table_configuration.tables_rows_config.size(); i++) {
         // Render header line
         int cell_start = calculated_table_configuration.tables_rows_config[i].col_start;
         int cell_end = calculated_table_configuration.tables_rows_config[i].col_end;
@@ -317,8 +165,8 @@ void CSVtoXLTABularConverter::draftLaTeX()
 
         std::cout << "\ncolumn_start: " << cell_start << " column_end: " << cell_end << "\n";
         header_line = headerLineRender(
-            cell_start, 
-            cell_end, 
+            cell_start,
+            cell_end,
             header
         );
         std::cout << header_line << std::endl;
@@ -326,10 +174,10 @@ void CSVtoXLTABularConverter::draftLaTeX()
 
         tableRender(
             calculated_table_configuration.table_width,
-            table_size, 
-            cell_start, 
-            cell_end, 
-            parsed_table_, 
+            table_size,
+            cell_start,
+            cell_end,
+            parsed_table_,
             header_line,
             calculated_table_configuration.column_widths,
             calculated_table_configuration.row_header_width
@@ -386,9 +234,9 @@ void CSVtoXLTABularConverter::normalizeDecCols(std::map<int, std::vector<std::st
 
 void CSVtoXLTABularConverter::normalizePrjCols(std::map<int, std::vector<std::string>> &table)
 {
-    auto vec_size = table[2].size(); 
-    std::vector<int> all_cols{}; all_cols.reserve(vec_size);  
-    for (auto i = 0; i < vec_size; i++) all_cols.push_back(i);
+    auto vec_size = table[2].size();
+    std::vector<int> all_cols{}; all_cols.reserve(vec_size);
+    for (size_t i = 0; i < vec_size; i++) all_cols.push_back(static_cast<int>(i));
 
     std::map<int, std::vector<std::string>> edit_map;
     auto it = table.find(2);
@@ -398,17 +246,8 @@ void CSVtoXLTABularConverter::normalizePrjCols(std::map<int, std::vector<std::st
     table[2] = edit_map[2];
 }
 
-std::vector<int> CSVtoXLTABularConverter::apply1basedTo0based(const std::vector<int> &one_based_indices)
+bool CSVtoXLTABularConverter::isEmptyRow(const std::vector<std::string> &vec)
 {
-    std::vector<int> zero_based_indices;
-    zero_based_indices.reserve(one_based_indices.size());
-    for (int index : one_based_indices) {
-        zero_based_indices.push_back(index - 1);
-    }
-    return zero_based_indices;
-}
-
-bool CSVtoXLTABularConverter::isEmptyRow(const std::vector<std::string> &vec) {
     bool all_empty = true;
     for (const auto& s : vec)
         if (!s.empty() && s != "\"\"") all_empty = false;
@@ -424,7 +263,7 @@ std::map<int, std::vector<std::string>> CSVtoXLTABularConverter::extractAndValid
     std::vector<std::string> values; // first non-empty row captured here
     for (const auto& [key, row] : data_from_table) {
         if (isEmptyRow(row)) continue; // skip empty rows and \"\" rows
-        if (values.empty()) {            
+        if (values.empty()) {
             values = row; // capture first non-empty row as reference
             continue;
         }
@@ -445,7 +284,7 @@ std::map<int, std::vector<std::string>> CSVtoXLTABularConverter::extractAndValid
                     << "\" vs expected \"" << values[i] << "\")";
                 throw std::runtime_error(oss.str());
             }
-        }        
+        }
     }
     std::map<int, std::vector<std::string>> prj_info_table;
 
@@ -471,20 +310,19 @@ std::string CSVtoXLTABularConverter::headerLineRender(int start_cell, int end_ce
 
 void CSVtoXLTABularConverter::tableRender(
     int _table_width,
-    int table_size, 
-    int start_cell, 
-    int end_cell, 
-    const std::map<int, std::vector<std::string>>& table_, 
+    int table_size,
+    int start_cell,
+    int end_cell,
+    const std::map<int, std::vector<std::string>>& table_,
     const std::string& header_line_,
     const std::vector<float>& column_widths,
     float row_header_width
 ) {
     auto table_width = end_cell - start_cell + 1;
-    std::string table_title;
     std::string col_spec;
     std::string diagbox;
     int total_cols = 0;
-    switch (convert_type_)
+    switch (settings_.convert_type)
     {
         case TableType::Default:
             total_cols = table_width;
@@ -501,19 +339,19 @@ void CSVtoXLTABularConverter::tableRender(
         default:
             throw std::runtime_error("tableRender: unsupported TableType");
     }
-    
+
     std::ostringstream oss;
     for (int i = start_cell; i <= end_cell; ++i) {
         oss << "m{" << std::fixed << std::setprecision(2) << column_widths[i] << "mm}|";
     }
     col_spec += oss.str();
-    
+
     oss.str(""); // Clear the stream for reuse
     oss.clear(); // Clear any error flags
-    
-    oss << "\\setlength\\LTleft{0cm}\n" 
+
+    oss << "\\setlength\\LTleft{0cm}\n"
         << "\\stepcounter{tablefigure}\n"
-        << "\\noindent Таблица~\\thetablefigure: " << table_config_.table_title << "~\\vspace{-0.75em}\n"
+        << "\\noindent Таблица~\\thetablefigure: " << settings_.table_title << "~\\vspace{-0.75em}\n"
         << "\\begin{xltabular}{" << std::to_string(_table_width) << "mm}{" << col_spec << "}\n"
         << "\\hline\n"
         << diagbox << header_line_
@@ -524,48 +362,43 @@ void CSVtoXLTABularConverter::tableRender(
         << "\\multicolumn{" << std::to_string(total_cols) << "}{r}{\\small\\sl продолжение на следующей странице}\\\\ \n"
         << "\\endfoot\n"
         << "\\endlastfoot\n";
-    
-    // latex_string_ += oss.str();
-                
+
     // Fill table rows
-    int header_row = has_column_header ? 0 : 1; // Header row is 0 if header added in settings, if no header in settings then 1
+    int header_row = settings_.include_header ? 0 : 1; // Header row is 0 if header added in settings, if no header in settings then 1
     for (const auto& [row_num, fields] : table_) {
         if (row_num == header_row) {
             continue; // Skip header row
         }
         // If need Row Header
-        if (convert_type_ == TableType::HeadColumn) {
-            // latex_string_ += (fields[0] + " & ");
+        if (settings_.convert_type == TableType::HeadColumn) {
             oss << fields[0] << " & ";
         }
 
-        for (size_t i = start_cell; i < end_cell + 1; ++i) {
-            // latex_string_ += fields[i];
+        for (size_t i = start_cell; i < static_cast<size_t>(end_cell) + 1; ++i) {
             oss << fields[i];
-            if (i < end_cell) {
-                // latex_string_ += " & ";
+            if (static_cast<int>(i) < end_cell) {
                 oss << " & ";
             } else {
-                // latex_string_ += "\\\\ \\hline\n";
                 oss << "\\\\ \\hline\n";
             }
         }
     }
-    // latex_string_ += "\\end{xltabular}%\n\\vspace{0em}\n\n";
     oss << "\\end{xltabular}%\n\\vspace{0em}\n\n";
     latex_string_ += oss.str();
+    (void)table_size;
 }
 
-TableConfig CSVtoXLTABularConverter::calculateTableConfig(int _header_size) {
-    TableConfig table_settings = this->table_config_;
-    const int offset = (convert_type_ == TableType::HeadColumn) ? 1 : 0;
+ConversionSettings CSVtoXLTABularConverter::calculateTableConfig(int _header_size)
+{
+    ConversionSettings table_settings = this->settings_;
+    const int offset = (settings_.convert_type == TableType::HeadColumn) ? 1 : 0;
 
     // ── Step 1: resolve row-header width FIRST (default, or custom override) ──
-    float _row_header_width = static_cast<float>(table_settings.table_width) / table_config_.max_columns;
+    float _row_header_width = static_cast<float>(table_settings.table_width) / table_settings.max_columns;
     if (offset == 1) {
-        for (size_t k = 0; k < custom_column_number_.size(); ++k) {
-            if (custom_column_number_[k] == 0) {
-                float custom_width = static_cast<float>(custom_column_width_[k]);
+        for (size_t k = 0; k < settings_.custom_column_number.size(); ++k) {
+            if (settings_.custom_column_number[k] == 0) {
+                float custom_width = static_cast<float>(settings_.custom_column_width[k]);
                 if (custom_width < _row_header_width) {
                     std::cerr << "[WARN] table_settings: custom row-header width (" << custom_width
                                << "mm) is smaller than default (table_width / max_clolumns = " << _row_header_width
@@ -580,8 +413,8 @@ TableConfig CSVtoXLTABularConverter::calculateTableConfig(int _header_size) {
     table_settings.row_header_width = _row_header_width;
 
     // ── Step 2: default column width, now using the RESOLVED row header width ──
-    int effective_columns = table_config_.max_columns - offset;
-    float effective_table_width = static_cast<float>(table_config_.table_width) - (offset * _row_header_width);
+    int effective_columns = table_settings.max_columns - offset;
+    float effective_table_width = static_cast<float>(table_settings.table_width) - (offset * _row_header_width);
     float def_col_width = effective_table_width / effective_columns;
 
     std::cout << "\noffset=" << offset << " row_header_width=" << _row_header_width
@@ -592,9 +425,9 @@ TableConfig CSVtoXLTABularConverter::calculateTableConfig(int _header_size) {
     // ── Step 3: build per-column width array, indexed by RAW field position ──
     std::vector<float> columns_width_array(_header_size, def_col_width);
 
-    for (size_t k = 0; k < custom_column_number_.size(); ++k) {
-        int raw_idx = custom_column_number_[k];
-        float width = static_cast<float>(custom_column_width_[k]);
+    for (size_t k = 0; k < settings_.custom_column_number.size(); ++k) {
+        int raw_idx = settings_.custom_column_number[k];
+        float width = static_cast<float>(settings_.custom_column_width[k]);
 
         if (raw_idx < 0 || raw_idx >= _header_size)
             throw std::runtime_error("table_settings.column_number: index " + std::to_string(raw_idx + 1) +
@@ -620,7 +453,7 @@ TableConfig CSVtoXLTABularConverter::calculateTableConfig(int _header_size) {
 
     // ── Step 4: pack pages by width, shrinking target width until the last
     //    page clears min_table_width (or there's only one page total) ──
-    const float min_table_width = table_config_.remdnr_min * def_col_width;
+    const float min_table_width = table_settings.remdnr_min * def_col_width;
 
     int i = 0;
     while (true) {
@@ -635,14 +468,12 @@ TableConfig CSVtoXLTABularConverter::calculateTableConfig(int _header_size) {
         for (int col = offset; col < _header_size; ++col) {
             float w = columns_width_array[col];
             if (running_width > 0.0f && running_width + w > target_width) {
-                // table_settings.tables_rows_config.push_back({false, col_start, col - 1});
                 table_settings.tables_rows_config.push_back({col_start, col - 1});
                 col_start = col;
                 running_width = 0.0f;
             }
             running_width += w;
         }
-        // table_settings.tables_rows_config.push_back({false, col_start, _header_size - 1});
         table_settings.tables_rows_config.push_back({col_start, _header_size - 1}); // post-loop push to add the last table
 
         auto& last = table_settings.tables_rows_config.back();
