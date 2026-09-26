@@ -54,7 +54,7 @@ void CSVtoXLTABularConverter::draftTable()
     // Extract project data from csv if available
     if (!settings_.prj_cols.empty()) {
         std::cout << "[LOG] Extracting project data\n";
-        auto prj_info_table = extractAndValidate(parsed_table_, settings_.prj_cols, settings_.prj_cols_header);
+        auto prj_info_table = ExtractConstantColumns(parsed_table_, settings_.prj_cols, settings_.prj_cols_header);
         normalizePrjCols(prj_info_table);
         {
             IndentGuard guard(std::cout, "\t");
@@ -246,52 +246,71 @@ void CSVtoXLTABularConverter::normalizePrjCols(std::map<int, std::vector<std::st
     table[2] = edit_map[2];
 }
 
-bool CSVtoXLTABularConverter::isEmptyRow(const std::vector<std::string> &vec)
+bool CSVtoXLTABularConverter::IsEmptyRow(const std::vector<std::string> &row)
 {
-    bool all_empty = true;
-    for (const auto& s : vec)
-        if (!s.empty() && s != "\"\"") all_empty = false;
-    return all_empty;
+    for (const auto& s : row)
+        if (!s.empty() && s != "\"\"") return false;
+    return true;
 }
 
-std::map<int, std::vector<std::string>> CSVtoXLTABularConverter::extractAndValidate(const std::map<int, std::vector<std::string>> &table, const std::vector<int> &columns_list, const std::vector<std::string> &header_list)
+std::map<int, std::vector<std::string>> CSVtoXLTABularConverter::ExtractColumns(const std::map<int, std::vector<std::string>> &table, const std::vector<int> &columns)
 {
-    std::cout << "[LOG] Extracting and validating project data.\n";
+    std::map<int, std::vector<std::string>> extracted;
+    for (const auto& [row_num, fields] : table) {
+        for (int col : columns) {
+            extracted[row_num].push_back(fields[col]);
+        }
+    }
+    return extracted;
+}
 
-    auto data_from_table = csv_parser_->extractTable(table, columns_list);
+ConstantColumnsCheck CSVtoXLTABularConverter::CheckConstantRows(const std::map<int, std::vector<std::string>> &table)
+{
+    ConstantColumnsCheck result;
 
-    std::vector<std::string> values; // first non-empty row captured here
-    for (const auto& [key, row] : data_from_table) {
-        if (isEmptyRow(row)) continue; // skip empty rows and \"\" rows
-        if (values.empty()) {
-            values = row; // capture first non-empty row as reference
+    for (const auto& [key, row] : table) {
+        if (IsEmptyRow(row))
+            continue; // skip empty rows and \"\" rows
+
+        if (result.reference_row.empty()) {
+            result.reference_row = row; // capture first non-empty row as reference
             continue;
         }
 
-        // Subsequent non-empty rows: must match values exactly
-        if (row.size() != values.size()) {
+        if (row.size() != result.reference_row.size()) {
             std::ostringstream oss;
             oss << "Row " << key << ": column count mismatch ("
-                << row.size() << " vs expected " << values.size() << ")";
-            throw std::runtime_error(oss.str());
+                << row.size() << " vs expected " << result.reference_row.size() << ")";
+            result.errors.push_back(oss.str());
+            continue; // can't compare element-wise against a different length
         }
 
-        for (std::size_t i = 0; i < values.size(); ++i) {
-            if (row[i] != values[i] ) {
+        for (std::size_t i = 0; i < result.reference_row.size(); ++i) {
+            if (row[i] != result.reference_row[i]) {
                 std::ostringstream oss;
                 oss << "Row " << key << ", col " << i
                     << ": value mismatch (\"" << row[i]
-                    << "\" vs expected \"" << values[i] << "\")";
-                throw std::runtime_error(oss.str());
+                    << "\" vs expected \"" << result.reference_row[i] << "\")";
+                result.errors.push_back(oss.str());
             }
         }
     }
-    std::map<int, std::vector<std::string>> prj_info_table;
 
-    prj_info_table[1] = header_list;
-    prj_info_table[2] = values;
+    return result;
+}
 
-    return prj_info_table;
+std::map<int, std::vector<std::string>> CSVtoXLTABularConverter::ExtractConstantColumns(const std::map<int, std::vector<std::string>> &table, const std::vector<int> &columns, const std::vector<std::string> &headers)
+{
+    auto extracted = ExtractColumns(table, columns);
+    auto check = CheckConstantRows(extracted);
+    if (!check.errors.empty())
+        throw std::runtime_error(check.errors.front());
+
+    std::map<int, std::vector<std::string>> result;
+    if (!headers.empty())
+        result[1] = headers;
+    result[2] = check.reference_row;
+    return result;
 }
 
 std::string CSVtoXLTABularConverter::headerLineRender(int start_cell, int end_cell, const std::vector<std::string> &header_)

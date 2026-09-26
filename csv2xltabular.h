@@ -11,6 +11,8 @@
 #include <iostream>
 #include <fstream>
 #include <string>
+#include <map>
+#include <vector>
 
 #include <algorithm>
 #include <iomanip>
@@ -61,9 +63,28 @@ private:
 
     void normalizeDecCols(std::map<int, std::vector<std::string>>& table, const std::vector<int>& columns_list, int precision = 0, const std::string& delimiter = ",");
     void normalizePrjCols(std::map<int, std::vector<std::string>>& table);
+    
+    bool IsEmptyRow(const std::vector<std::string>& row);
+    // Pulls the given raw column indices out of every row. No validation, no
+    // instance state needed — pure reshape. Reusable for previews/other checks
+    // beyond the constant-column use case below.
+    std::map<int, std::vector<std::string>> ExtractColumns(const std::map<int, std::vector<std::string>>& table,const std::vector<int>& columns);
 
-    static bool isEmptyRow(const std::vector<std::string>& vec);
-    std::map<int, std::vector<std::string>> extractAndValidate(const std::map<int, std::vector<std::string>>& table, const std::vector<int>& columns_list, const std::vector<std::string>& header_list);
+    // Result of checking that a (typically already-extracted) table's non-empty
+    // rows all hold the same values. Non-throwing — same "check, report every
+    // problem" shape as ValidateSettings, so callers can preview data quality
+    // before committing to a run.
+    ConstantColumnsCheck CheckConstantRows(const std::map<int, std::vector<std::string>>& table);
+
+    // Extract + check + reshape into a 1-or-2-row table, in one call — what
+    // draftTable() actually needs for prj_cols. Throws on the first check
+    // failure (this call site wants "value or exception", not a report).
+    // headers empty (default): result is just {2: reference_row}, no header row.
+    // headers non-empty: result is {1: headers, 2: reference_row}.
+    std::map<int, std::vector<std::string>> ExtractConstantColumns(
+        const std::map<int, std::vector<std::string>>& table,
+        const std::vector<int>& columns,
+        const std::vector<std::string>& headers = {});
 
     std::string latex_string_;
 

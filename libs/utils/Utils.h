@@ -43,3 +43,8 @@ private:
     std::streambuf* old_;
     IndentStreambuf buf_;
 };
+
+struct ConstantColumnsCheck {
+    std::vector<std::string> reference_row; // first non-empty row found
+    std::vector<std::string> errors;        // empty = every row matched it
+};
