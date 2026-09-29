@@ -263,9 +263,9 @@ void CSVParser::export_csv(const std::map<int, std::vector<std::string>> &table,
 std::optional<dataformat::Row> CSVParser::next_row(int start_col) {
     std::string line;
     while (std::getline(file_, line)) {
-        ++line_num_;
         if (!line.empty() && line.back() == '\r') line.pop_back(); // strip CRLF
         if (line.empty()) continue; // blank line — skip, don't return
+        ++line_num_;
 
         dataformat::Row row;
         row.line_number = line_num_;
