@@ -141,17 +141,16 @@ void CSVtoXLTABularConverter::draftLaTeX()
         return;
     }
 
-    if (settings_.include_header) {
-        // If header settings are available, use it as the first row for LaTeX rendering
-        header = parsed_table_[0];
-    } else {
-        // If no header settings, use the first row of the parsed table as the header for LaTeX rendering
-        header = parsed_table_[1];
-    }
+    // Use the first row of the parsed table as the header for LaTeX rendering
+    // If header settings are available, they were added in draftTable()
+    header = parsed_table_.begin()->second;
+
+    std::cout << "\n[LOG]Header:"; 
+    for (const auto& i: header) std::cout << " " << i;
 
     // Table measurement conversion block
     int header_size = static_cast<int>(header.size());
-    std::cout << "\nheader_size: " << header_size << "\n";
+    std::cout << "\n[LOG]Header_size: " << header_size << "\n";
     auto calculated_table_configuration = calculateTableConfig(header_size);
 
     std::string header_line;
@@ -242,7 +241,7 @@ void CSVtoXLTABularConverter::normalizePrjCols(std::map<int, std::vector<std::st
     auto it = table.find(2);
     edit_map.insert(*it);
 
-    normalizeDecCols(edit_map, all_cols, 1);
+    normalizeDecCols(edit_map, all_cols, 1, this->settings_.decimal_delimiter);
     table[2] = edit_map[2];
 }
 
@@ -383,7 +382,7 @@ void CSVtoXLTABularConverter::tableRender(
         << "\\endlastfoot\n";
 
     // Fill table rows
-    int header_row = settings_.include_header ? 0 : 1; // Header row is 0 if header added in settings, if no header in settings then 1
+    int header_row = settings_.include_header ? 0 : table_.begin()->first;
     for (const auto& [row_num, fields] : table_) {
         if (row_num == header_row) {
             continue; // Skip header row
