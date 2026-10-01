@@ -154,6 +154,17 @@ ConversionSettings LoadSettingsFromIni(IniParser& ini)
         s.max_columns = ini.getValue<int>("table_settings.max_columns");
         s.remdnr_min = ini.getValue<int>("table_settings.min_columns");
 
+        if (ini.hasKey("table_settings.custom_column_type")) {
+            const auto column_type = ini.getValue<std::string>("table_settings.custom_column_type");
+            if (!column_type.empty()) {
+                s.custom_column_type = column_type.front();
+            }
+        }
+        if (ini.hasKey("table_settings.numbered_header_line")) {
+            s.numbered_header_line =
+                ini.getValue<std::string>("table_settings.numbered_header_line") == "true";
+        }
+
         if (ini.hasKey("table_settings.column_number") && ini.hasKey("table_settings.column_width")) {
             auto col_nums = ini.getValue<std::vector<int>>("table_settings.column_number");
             auto col_widths = ini.getValue<std::vector<int>>("table_settings.column_width");
@@ -256,6 +267,9 @@ void WriteSettingsToIni(const ConversionSettings& s, const std::string& path)
         out << "table_title = \"" << s.table_title << "\"\n";
     out << "max_columns = " << s.max_columns << "\n";
     out << "min_columns = " << s.remdnr_min << "\n";
+    if (s.custom_column_type != '\0')
+        out << "custom_column_type = " << s.custom_column_type << "\n";
+    out << "numbered_header_line = " << (s.numbered_header_line ? "true" : "false") << "\n";
     if (!s.custom_column_number.empty()) {
         out << "column_number = " << JoinInts(s.custom_column_number, 1) << "\n";
         out << "column_width = " << JoinInts(s.custom_column_width) << "\n";

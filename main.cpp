@@ -4,9 +4,11 @@ int main(int argc, char* argv[]) {
     try {
         CSVtoXLTABularConverter converter("data.csv", "settings.ini");
         converter.convert();
-        converter.exportToFile();
-        converter.exportToCSV(); 
-        
+        // Default export from parsed_table_
+        converter.exportToFile("default_table.tex");
+        // Optional export to CSV (unchanged behavior)
+        converter.exportToCSV();
+
     } catch (const std::exception& e) {
         std::cerr << "Error: " << e.what() << std::endl;
     } catch (int e) {

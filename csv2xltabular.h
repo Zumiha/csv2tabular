@@ -17,6 +17,26 @@
 #include <algorithm>
 #include <iomanip>
 
+struct TableLayoutOptions {
+    TableType convert_type = TableType::Default;
+    std::string table_title = "default_title";
+    int table_width = 180;
+    int max_columns = 12;
+    int remdnr_min = 8;
+    char custom_column_type = '\0';
+    bool numbered_header_line = false;
+    std::vector<int> custom_column_number;
+    std::vector<int> custom_column_width;
+};
+
+struct LatexDraftOptions {
+    std::vector<int> column_order;        // 0-based; empty => current order
+    std::string header_line_override;     // optional explicit header line to use
+    bool use_full_header_in_repeated_head = true; // false => first head full + numbering, repeated head numbering only
+    bool ignore_empty_rows = false;        // if true, drop rows with any empty selected column
+    TableLayoutOptions layout;
+};
+
 class CSVtoXLTABularConverter {
 public:
     // GUI-friendly: no file I/O at construction. Build a ConversionSettings
@@ -40,6 +60,7 @@ public:
     void convert();
 
     void exportToFile(const std::string& output_filename = "wt_table.tex");
+    void exportToFile(const std::string& output_filename, const LatexDraftOptions& options);
     void exportToCSV(const std::string& output_filename = "debug.csv") const {
         if (table_converted_) {
             IndentGuard guard(std::cout, "\t");
@@ -47,6 +68,10 @@ public:
         } else {
             std::cout << "File was not converted, can't export";
         }
+    }
+
+    std::map<int, std::vector<std::string>> getParsedTable() const {
+        return parsed_table_;
     }
 
 private:
@@ -59,7 +84,14 @@ private:
     bool table_converted_ = false;
 
     void draftTable();
-    void draftLaTeX();
+    void exportToFileImpl(
+        const std::string& output_filename,
+        const LatexDraftOptions& options,
+        const TableLayoutOptions& layout);
+    std::string draftLaTeX(
+        const std::map<int, std::vector<std::string>>& table,
+        const LatexDraftOptions& options,
+        const TableLayoutOptions& layout);
 
     void normalizeDecCols(std::map<int, std::vector<std::string>>& table, const std::vector<int>& columns_list, int precision = 0, const std::string& delimiter = ",");
     void normalizePrjCols(std::map<int, std::vector<std::string>>& table);
@@ -96,10 +128,21 @@ private:
         int end_cell,
         const std::map<int, std::vector<std::string>>& table_,
         const std::string& header_line_,
+        const std::string& repeated_header_line_,
+        const TableLayoutOptions& layout,
         const std::vector<float>& column_widths,
         float row_header_width
     );
-    ConversionSettings calculateTableConfig(int _header_size);
+
+    struct CalculatedTableConfiguration {
+        int table_width = 0;
+        float row_header_width = 0.0f;
+        std::vector<float> column_widths;
+        std::vector<TablesRows> tables_rows_config;
+    };
+    CalculatedTableConfiguration calculateTableConfig(
+        int header_size,
+        const TableLayoutOptions& layout) const;
 };
 
 #endif // CSV2XTABULAR_H

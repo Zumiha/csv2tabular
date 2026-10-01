@@ -67,6 +67,8 @@ struct ConversionSettings {
     int table_width = 180; // mm
     int max_columns = 12;
     int remdnr_min = 8; // minimum columns on a page's tail split
+    char custom_column_type = '\0';
+    bool numbered_header_line = false;
 
     std::vector<int> custom_column_number; // 0-based, parallel to custom_column_width
     std::vector<int> custom_column_width;  // mm
