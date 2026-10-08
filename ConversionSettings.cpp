@@ -50,7 +50,7 @@ ConversionSettings LoadSettingsFromIni(IniParser& ini)
     std::cout << "\n[LOG] Loading settings from INI\n";
 
     if (ini.hasKey("source_csv.type")) {
-        s.convert_type = static_cast<TableType>(ini.getValue<int>("source_csv.type"));
+        s.table_layout.convert_type = static_cast<TableType>(ini.getValue<int>("source_csv.type"));
     } else {
         std::cout << "No document type settings found. Converting to default type.\n";
     }
@@ -142,26 +142,26 @@ ConversionSettings LoadSettingsFromIni(IniParser& ini)
 
     if (ini.hasSection("table_settings")) {
         if (ini.hasKey("table_settings.table_title"))
-            s.table_title = ini.getValue<std::string>("table_settings.table_title");
+            s.table_layout.table_title = ini.getValue<std::string>("table_settings.table_title");
         else
             std::cout << "No table title settings found. Using default title.\n";
 
         if (ini.hasKey("table_settings.table_width"))
-            s.table_width = ini.getValue<int>("table_settings.table_width");
+            s.table_layout.table_width = ini.getValue<int>("table_settings.table_width");
         else
             std::cout << "No table width settings found. Using default width.\n";
 
-        s.max_columns = ini.getValue<int>("table_settings.max_columns");
-        s.remdnr_min = ini.getValue<int>("table_settings.min_columns");
+        s.table_layout.max_columns = ini.getValue<int>("table_settings.max_columns");
+        s.table_layout.remdnr_min = ini.getValue<int>("table_settings.min_columns");
 
         if (ini.hasKey("table_settings.custom_column_type")) {
             const auto column_type = ini.getValue<std::string>("table_settings.custom_column_type");
             if (!column_type.empty()) {
-                s.custom_column_type = column_type.front();
+                s.table_layout.custom_column_type = column_type.front();
             }
         }
         if (ini.hasKey("table_settings.numbered_header_line")) {
-            s.numbered_header_line =
+            s.table_layout.numbered_header_line =
                 ini.getValue<std::string>("table_settings.numbered_header_line") == "true";
         }
 
@@ -169,8 +169,8 @@ ConversionSettings LoadSettingsFromIni(IniParser& ini)
             auto col_nums = ini.getValue<std::vector<int>>("table_settings.column_number");
             auto col_widths = ini.getValue<std::vector<int>>("table_settings.column_width");
             if (!col_nums.empty() && col_nums.size() == col_widths.size()) {
-                s.custom_column_number = Apply1BasedTo0Based(col_nums);
-                s.custom_column_width = col_widths;
+                s.table_layout.custom_column_number = Apply1BasedTo0Based(col_nums);
+                s.table_layout.custom_column_width = col_widths;
             } else {
                 std::cerr << "[WARN] table_settings: column_number and column_width must be non-empty and equal length ("
                           << col_nums.size() << " vs " << col_widths.size() << "). Falling back to uniform column width.\n";
@@ -180,7 +180,7 @@ ConversionSettings LoadSettingsFromIni(IniParser& ini)
         }
     }
 
-    // Originally read inside draftTable() (after parsing) purely because that
+    // Originally read during table formatting purely because that
     // was convenient, not because it depends on the parsed table — the value
     // itself is a plain setting. Reading it here, upfront, is what lets
     // Convert() stop reaching back into IniParser mid-conversion.
@@ -211,7 +211,7 @@ void WriteSettingsToIni(const ConversionSettings& s, const std::string& path)
     out << "[source_csv]\n";
     out << "start_column = " << s.start_col << "\n";
     out << "start_row = " << s.start_row << "\n";
-    out << "type = " << static_cast<int>(s.convert_type) << "\n\n";
+    out << "type = " << static_cast<int>(s.table_layout.convert_type) << "\n\n";
 
     if (!s.prj_cols.empty()) {
         out << "[column_prj]\n";
@@ -263,18 +263,18 @@ void WriteSettingsToIni(const ConversionSettings& s, const std::string& path)
     }
 
     out << "[table_settings]\n";
-    if (!s.table_title.empty())
-        out << "table_title = \"" << s.table_title << "\"\n";
-    out << "max_columns = " << s.max_columns << "\n";
-    out << "min_columns = " << s.remdnr_min << "\n";
-    if (s.custom_column_type != '\0')
-        out << "custom_column_type = " << s.custom_column_type << "\n";
-    out << "numbered_header_line = " << (s.numbered_header_line ? "true" : "false") << "\n";
-    if (!s.custom_column_number.empty()) {
-        out << "column_number = " << JoinInts(s.custom_column_number, 1) << "\n";
-        out << "column_width = " << JoinInts(s.custom_column_width) << "\n";
+    if (!s.table_layout.table_title.empty())
+        out << "table_title = \"" << s.table_layout.table_title << "\"\n";
+    out << "max_columns = " << s.table_layout.max_columns << "\n";
+    out << "min_columns = " << s.table_layout.remdnr_min << "\n";
+    if (s.table_layout.custom_column_type != '\0')
+        out << "custom_column_type = " << s.table_layout.custom_column_type << "\n";
+    out << "numbered_header_line = " << (s.table_layout.numbered_header_line ? "true" : "false") << "\n";
+    if (!s.table_layout.custom_column_number.empty()) {
+        out << "column_number = " << JoinInts(s.table_layout.custom_column_number, 1) << "\n";
+        out << "column_width = " << JoinInts(s.table_layout.custom_column_width) << "\n";
     }
-    out << "table_width = " << s.table_width << "\n";
+    out << "table_width = " << s.table_layout.table_width << "\n";
 
     if (out.fail())
         throw std::runtime_error("Write error on settings file: " + path);
@@ -303,15 +303,15 @@ std::vector<std::string> ValidateSettings(const ConversionSettings& s)
         }
     }
 
-    if (s.custom_column_number.size() != s.custom_column_width.size())
+    if (s.table_layout.custom_column_number.size() != s.table_layout.custom_column_width.size())
         errors.push_back("Custom column widths: column list and width list must be the same length.");
 
     if (s.include_header && s.sheet_header.empty())
         errors.push_back("Header is enabled but no header text was provided.");
 
-    if (s.max_columns <= 0)
+    if (s.table_layout.max_columns <= 0)
         errors.push_back("Max columns must be greater than 0.");
-    if (s.table_width <= 0)
+    if (s.table_layout.table_width <= 0)
         errors.push_back("Table width must be greater than 0.");
     if (s.start_row < 1 || s.start_col < 1)
         errors.push_back("Start row/column must be 1 or greater.");

@@ -4,28 +4,24 @@
 
 namespace {
 
-std::map<int, std::vector<std::string>> BuildExportTable(
-    const std::map<int, std::vector<std::string>>& table,
-    const LatexDraftOptions& options)
+std::vector<std::string> SelectColumns(
+    const std::vector<std::string>& row,
+    const std::vector<int>& column_order)
 {
-    std::map<int, std::vector<std::string>> export_table;
-    for (const auto& [row_num, row] : table) {
-        std::vector<std::string> export_row;
-        if (options.column_order.empty()) {
-            export_row = row;
-        } else {
-            export_row.reserve(options.column_order.size());
-            for (int col : options.column_order) {
-                if (col >= 0 && col < static_cast<int>(row.size())) {
-                    export_row.push_back(row[col]);
-                } else {
-                    export_row.push_back("");
-                }
-            }
-        }
-        export_table[row_num] = std::move(export_row);
+    if (column_order.empty()) {
+        return row;
     }
-    return export_table;
+
+    std::vector<std::string> selected;
+    selected.reserve(column_order.size());
+    for (int col : column_order) {
+        if (col >= 0 && col < static_cast<int>(row.size())) {
+            selected.push_back(row[col]);
+        } else {
+            selected.emplace_back();
+        }
+    }
+    return selected;
 }
 
 std::string BuildNumberedHeaderLine(size_t column_count)
@@ -70,38 +66,33 @@ bool IsCellEmpty(const std::string& value)
     return first == std::string::npos;
 }
 
-std::map<int, std::vector<std::string>> FilterEmptyRows(const std::map<int, std::vector<std::string>>& table)
+std::vector<std::vector<std::string>> FilterEmptyRows(
+    const std::vector<std::vector<std::string>>& rows)
 {
-    std::map<int, std::vector<std::string>> filtered;
-    auto it = table.begin();
-    if (it != table.end()) {
-        filtered[it->first] = it->second;
-        ++it;
-    }
-
-    for (; it != table.end(); ++it) {
-        const auto& row = it->second;
+    std::vector<std::vector<std::string>> filtered;
+    for (const auto& row : rows) {
         const bool has_empty_cell = std::any_of(row.begin(), row.end(), IsCellEmpty);
         if (!has_empty_cell) {
-            filtered[it->first] = row;
+            filtered.push_back(row);
         }
     }
-
     return filtered;
 }
 
-TableLayoutOptions LayoutFromSettings(const ConversionSettings& settings)
+TableLayoutOptions ResolveLayout(
+    const TableLayoutOptions& defaults,
+    const LatexDraftOptions::LayoutOverrides& overrides)
 {
-    TableLayoutOptions layout;
-    layout.convert_type = settings.convert_type;
-    layout.table_title = settings.table_title;
-    layout.table_width = settings.table_width;
-    layout.max_columns = settings.max_columns;
-    layout.remdnr_min = settings.remdnr_min;
-    layout.custom_column_type = settings.custom_column_type;
-    layout.numbered_header_line = settings.numbered_header_line;
-    layout.custom_column_number = settings.custom_column_number;
-    layout.custom_column_width = settings.custom_column_width;
+    TableLayoutOptions layout = defaults;
+    if (overrides.convert_type) layout.convert_type = *overrides.convert_type;
+    if (overrides.table_title) layout.table_title = *overrides.table_title;
+    if (overrides.table_width) layout.table_width = *overrides.table_width;
+    if (overrides.max_columns) layout.max_columns = *overrides.max_columns;
+    if (overrides.remdnr_min) layout.remdnr_min = *overrides.remdnr_min;
+    if (overrides.custom_column_type) layout.custom_column_type = *overrides.custom_column_type;
+    if (overrides.numbered_header_line) layout.numbered_header_line = *overrides.numbered_header_line;
+    if (overrides.custom_column_number) layout.custom_column_number = *overrides.custom_column_number;
+    if (overrides.custom_column_width) layout.custom_column_width = *overrides.custom_column_width;
     return layout;
 }
 
@@ -159,22 +150,23 @@ void CSVtoXLTABularConverter::Convert(const std::string& csv_filename, const Con
     std::cout << "[LOG] Parsing completed\n";
 
     std::cout << "[LOG] Converting table\n";
-    draftTable();
+    transformTable();
+    formatTable();
     std::cout << "[LOG] Conversion completed\n";
     table_converted_ = true;
 }
 
 void CSVtoXLTABularConverter::exportToFile(const std::string& output_filename) {
-    exportToFileImpl(output_filename, {}, LayoutFromSettings(settings_));
+    exportToFileImpl(output_filename, {});
 }
 
 void CSVtoXLTABularConverter::exportToFile(const std::string& output_filename, const LatexDraftOptions& options) {
-    exportToFileImpl(output_filename, options, options.layout);
+    exportToFileImpl(output_filename, options);
 }
 
 void CSVtoXLTABularConverter::exportToCSV(const std::string &output_filename, bool export_prj_table)
 {
-    std::cout << "[LOG] Exporting parsed table to CSV\n";
+    std::cout << "[LOG] Exporting formatted table to CSV\n";
     if (table_converted_) {
         IndentGuard guard(std::cout, "\t");
         csv_parser_->export_csv(formatted_table_, output_filename);
@@ -193,18 +185,21 @@ void CSVtoXLTABularConverter::exportToCSV(const std::string &output_filename, bo
     }
 }
 
-void CSVtoXLTABularConverter::exportToFileImpl(const std::string& output_filename, const LatexDraftOptions& options, const TableLayoutOptions& layout) {
+void CSVtoXLTABularConverter::exportToFileImpl(const std::string& output_filename, const LatexDraftOptions& options) {
+    if (!table_converted_) {
+        throw std::runtime_error("Cannot export LaTeX before converting a CSV file");
+    }
     std::ofstream outfile(output_filename);
     if (!outfile.is_open()) {
         throw std::runtime_error("Failed to open output file: " + output_filename);
     }
-    const auto export_table = BuildExportTable(parsed_table_, options);
-    draftLaTeX(export_table, options, layout);
+    const auto layout = ResolveLayout(settings_.table_layout, options.layout_overrides);
+    draftLaTeX(buildLaTeXData(options), options, layout);
     outfile << this->latex_string_;
     outfile.close();
 }
 
-void CSVtoXLTABularConverter::draftTable()
+void CSVtoXLTABularConverter::transformTable()
 {
     converted_table_ = parsed_table_; // Start with the raw parsed table
     // MTM SpreadSheet table conversion block
@@ -256,44 +251,55 @@ void CSVtoXLTABularConverter::draftTable()
         std::cout << "[LOG] Normalization completed\n";
     }
 
-    formatted_table_ = converted_table_; // Store the formatted table for potential future use
-    // Attach header, if enabled
+}
+
+void CSVtoXLTABularConverter::formatTable()
+{
+    formatted_table_ = converted_table_;
     if (settings_.include_header) {
         std::cout << "[LOG] Creating header for SpreadSheet" << std::endl;
         formatted_table_[0] = settings_.sheet_header;
     }
-
-    // Custom column widths were already validated (non-empty + equal length)
-    // by LoadSettingsFromIni() / ValidateSettings() before reaching here.
 }
 
-std::string CSVtoXLTABularConverter::draftLaTeX(
-    const std::map<int, std::vector<std::string>>& source_table,
-    const LatexDraftOptions& options,
-    const TableLayoutOptions& layout)
+CSVtoXLTABularConverter::TabularData CSVtoXLTABularConverter::buildLaTeXData(
+    const LatexDraftOptions& options) const
 {
-    auto table = source_table;
-
-    if (table.empty()) {
-        latex_string_.clear();
-        std::cerr << "[WARN] draftLaTeX: table is empty, returning empty LaTeX string\n";
-        return latex_string_;
+    TabularData data;
+    auto row = converted_table_.begin();
+    if (settings_.include_header) {
+        data.header = settings_.sheet_header;
+    } else if (row != converted_table_.end()) {
+        data.header = row->second;
+        ++row;
     }
 
-    // Use the first row as the active header; it can be overridden explicitly by caller-provided LaTeX.
-    std::vector<std::string> header = table.begin()->second;
-    if (header.empty()) {
-        latex_string_.clear();
-        std::cerr << "[WARN] draftLaTeX: header row is empty, returning empty LaTeX string\n";
-        return latex_string_;
+    data.header = SelectColumns(data.header, options.column_order);
+    for (; row != converted_table_.end(); ++row) {
+        data.rows.push_back(SelectColumns(row->second, options.column_order));
     }
 
     if (options.ignore_empty_rows) {
-        const auto before_count = table.size();
-        table = FilterEmptyRows(table);
-        std::cout << "[DBG] ignore_empty_rows: kept " << table.size() << " / " << before_count
-                  << " rows across " << header.size() << " selected columns\n";
+        const auto before_count = data.rows.size();
+        data.rows = FilterEmptyRows(data.rows);
+        std::cout << "[DBG] ignore_empty_rows: kept " << data.rows.size() << " / " << before_count
+                  << " rows across " << data.header.size() << " selected columns\n";
     }
+    return data;
+}
+
+std::string CSVtoXLTABularConverter::draftLaTeX(
+    const TabularData& source_table,
+    const LatexDraftOptions& options,
+    const TableLayoutOptions& layout)
+{
+    if (source_table.header.empty()) {
+        latex_string_.clear();
+        std::cerr << "[WARN] draftLaTeX: header is empty, returning empty LaTeX string\n";
+        return latex_string_;
+    }
+
+    const auto& header = source_table.header;
 
     // first_head is the full header shown on the first page; repeated_head can be either the same header
     // or a numbered-only header depending on the caller's preference for page continuation.
@@ -346,7 +352,7 @@ std::string CSVtoXLTABularConverter::draftLaTeX(
             table_size,
             cell_start,
             cell_end,
-            table,
+            source_table.rows,
             page_header,
             page_repeated_header,
             layout,
@@ -520,7 +526,7 @@ void CSVtoXLTABularConverter::tableRender(
     int table_size,
     int start_cell,
     int end_cell,
-    const std::map<int, std::vector<std::string>>& table_,
+    const std::vector<std::vector<std::string>>& rows,
     const std::string& header_line_,
     const std::string& repeated_header_line_,
     const TableLayoutOptions& layout,
@@ -575,11 +581,7 @@ void CSVtoXLTABularConverter::tableRender(
         << "\\endlastfoot\n";
 
     // Fill table rows
-    const int header_row = table_.begin()->first;
-    for (const auto& [row_num, fields] : table_) {
-        if (row_num == header_row) {
-            continue; // Skip header row
-        }
+    for (const auto& fields : rows) {
         // If need Row Header
         if (layout.convert_type == TableType::HeadColumn) {
             oss << fields[0] << " & ";

@@ -19,6 +19,18 @@ enum class TableType {
     Other
 };
 
+struct TableLayoutOptions {
+    TableType convert_type = TableType::Default;
+    std::string table_title = "default_title";
+    int table_width = 180;
+    int max_columns = 12;
+    int remdnr_min = 8;
+    char custom_column_type = '\0';
+    bool numbered_header_line = false;
+    std::vector<int> custom_column_number;
+    std::vector<int> custom_column_width;
+};
+
 constexpr std::string_view to_string(TableType t)
 {
     switch (t) {
@@ -29,19 +41,11 @@ constexpr std::string_view to_string(TableType t)
     }
 }
 
-// One rendered page's column range. Computed by CSVtoXLTABularConverter,
-// not something a caller sets by hand.
-struct TablesRows {
-    int col_start;
-    int col_end;
-};
-
 // All conversion parameters in one place. Built either by LoadSettingsFromIni()
 // (CLI / "Load" button) or filled in directly by the GUI settings form — Convert()
 // doesn't care which. Presence in a list *is* the flag: an empty delete_cols means
 // "skip the delete step", there is no separate has_delete_cols bool to keep in sync.
 struct ConversionSettings {
-    TableType convert_type = TableType::Default;
     int start_row = 1;
     int start_col = 1;
 
@@ -63,22 +67,7 @@ struct ConversionSettings {
     bool include_header = false;
     std::vector<std::string> sheet_header;
 
-    std::string table_title = "default_title";
-    int table_width = 180; // mm
-    int max_columns = 12;
-    int remdnr_min = 8; // minimum columns on a page's tail split
-    char custom_column_type = '\0';
-    bool numbered_header_line = false;
-
-    std::vector<int> custom_column_number; // 0-based, parallel to custom_column_width
-    std::vector<int> custom_column_width;  // mm
-
-    // --- Populated internally by CSVtoXLTABularConverter once the CSV's column
-    // count is known (see calculateTableConfig()). Leave these at defaults when
-    // building settings by hand — they are output, not input. ---
-    std::vector<float> column_widths;
-    float row_header_width = 0.0f;
-    std::vector<TablesRows> tables_rows_config;
+    TableLayoutOptions table_layout;
 };
 
 // Reads [source_csv]/[column_*]/[table_settings]/[sheet_settings] from an

@@ -7,6 +7,7 @@
 #include "Utils.h"
 
 #include <memory>
+#include <optional>
 
 #include <iostream>
 #include <fstream>
@@ -17,24 +18,22 @@
 #include <algorithm>
 #include <iomanip>
 
-struct TableLayoutOptions {
-    TableType convert_type = TableType::Default;
-    std::string table_title = "default_title";
-    int table_width = 180;
-    int max_columns = 12;
-    int remdnr_min = 8;
-    char custom_column_type = '\0';
-    bool numbered_header_line = false;
-    std::vector<int> custom_column_number;
-    std::vector<int> custom_column_width;
-};
-
 struct LatexDraftOptions {
     std::vector<int> column_order;        // 0-based; empty => current order
     std::string header_line_override;     // optional explicit header line to use
     bool use_full_header_in_repeated_head = true; // false => first head full + numbering, repeated head numbering only
     bool ignore_empty_rows = false;        // if true, drop rows with any empty selected column
-    TableLayoutOptions layout;
+    struct LayoutOverrides {
+        std::optional<TableType> convert_type;
+        std::optional<std::string> table_title;
+        std::optional<int> table_width;
+        std::optional<int> max_columns;
+        std::optional<int> remdnr_min;
+        std::optional<char> custom_column_type;
+        std::optional<bool> numbered_header_line;
+        std::optional<std::vector<int>> custom_column_number;
+        std::optional<std::vector<int>> custom_column_width;
+    } layout_overrides;
 };
 
 class CSVtoXLTABularConverter {
@@ -74,14 +73,21 @@ private:
 
     ConversionSettings settings_;
     std::map<int, std::vector<std::string>> parsed_table_; // raw table after CSV parsing
-    std::map<int, std::vector<std::string>> converted_table_; // holds the table after all transformations applied
-    std::map<int, std::vector<std::string>> formatted_table_; // converted table + added header (if enabled)
+    std::map<int, std::vector<std::string>> converted_table_; // transformed data rows
+    std::map<int, std::vector<std::string>> formatted_table_; // converted table prepared for CSV output
     std::map<int, std::vector<std::string>> project_table_;
     bool table_converted_ = false;
 
-    void draftTable();
-    void exportToFileImpl(const std::string& output_filename, const LatexDraftOptions& options, const TableLayoutOptions& layout);
-    std::string draftLaTeX(const std::map<int, std::vector<std::string>>& table, const LatexDraftOptions& options, const TableLayoutOptions& layout);
+    struct TabularData {
+        std::vector<std::string> header;
+        std::vector<std::vector<std::string>> rows;
+    };
+
+    void transformTable();
+    void formatTable();
+    void exportToFileImpl(const std::string& output_filename, const LatexDraftOptions& options);
+    TabularData buildLaTeXData(const LatexDraftOptions& options) const;
+    std::string draftLaTeX(const TabularData& table, const LatexDraftOptions& options, const TableLayoutOptions& layout);
 
     void normalizeDecCols(std::map<int, std::vector<std::string>>& table, const std::vector<int>& columns_list, int precision = 0, const std::string& delimiter = ",");
     void normalizePrjCols(std::map<int, std::vector<std::string>>& table);
@@ -99,7 +105,7 @@ private:
     ConstantColumnsCheck CheckConstantRows(const std::map<int, std::vector<std::string>>& table);
 
     // Extract + check + reshape into a 1-or-2-row table, in one call — what
-    // draftTable() actually needs for prj_cols. Throws on the first check
+    // Convert() needs for prj_cols. Throws on the first check
     // failure (this call site wants "value or exception", not a report).
     // headers empty (default): result is just {2: reference_row}, no header row.
     // headers non-empty: result is {1: headers, 2: reference_row}.
@@ -107,6 +113,11 @@ private:
         const std::map<int, std::vector<std::string>>& table,
         const std::vector<int>& columns,
         const std::vector<std::string>& headers = {});
+
+    struct TableColumnRange {
+        int col_start;
+        int col_end;
+    };
 
     std::string latex_string_;
 
@@ -116,7 +127,7 @@ private:
         int table_size,
         int start_cell,
         int end_cell,
-        const std::map<int, std::vector<std::string>>& table_,
+        const std::vector<std::vector<std::string>>& rows,
         const std::string& header_line_,
         const std::string& repeated_header_line_,
         const TableLayoutOptions& layout,
@@ -128,7 +139,7 @@ private:
         int table_width = 0;
         float row_header_width = 0.0f;
         std::vector<float> column_widths;
-        std::vector<TablesRows> tables_rows_config;
+        std::vector<TableColumnRange> tables_rows_config;
     };
     CalculatedTableConfiguration calculateTableConfig(
         int header_size,
