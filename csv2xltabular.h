@@ -61,14 +61,7 @@ public:
 
     void exportToFile(const std::string& output_filename = "wt_table.tex");
     void exportToFile(const std::string& output_filename, const LatexDraftOptions& options);
-    void exportToCSV(const std::string& output_filename = "debug.csv") const {
-        if (table_converted_) {
-            IndentGuard guard(std::cout, "\t");
-            csv_parser_->export_csv(parsed_table_, output_filename);
-        } else {
-            std::cout << "File was not converted, can't export";
-        }
-    }
+    void exportToCSV(const std::string& output_filename = "debug.csv", bool export_prj_table = false);
 
     std::map<int, std::vector<std::string>> getParsedTable() const {
         return parsed_table_;
@@ -80,18 +73,15 @@ private:
     std::unique_ptr<IniParser> ini_parser_; // set by the 2-arg ctor, for convert()'s sake
 
     ConversionSettings settings_;
-    std::map<int, std::vector<std::string>> parsed_table_;
+    std::map<int, std::vector<std::string>> parsed_table_; // raw table after CSV parsing
+    std::map<int, std::vector<std::string>> converted_table_; // holds the table after all transformations applied
+    std::map<int, std::vector<std::string>> formatted_table_; // converted table + added header (if enabled)
+    std::map<int, std::vector<std::string>> project_table_;
     bool table_converted_ = false;
 
     void draftTable();
-    void exportToFileImpl(
-        const std::string& output_filename,
-        const LatexDraftOptions& options,
-        const TableLayoutOptions& layout);
-    std::string draftLaTeX(
-        const std::map<int, std::vector<std::string>>& table,
-        const LatexDraftOptions& options,
-        const TableLayoutOptions& layout);
+    void exportToFileImpl(const std::string& output_filename, const LatexDraftOptions& options, const TableLayoutOptions& layout);
+    std::string draftLaTeX(const std::map<int, std::vector<std::string>>& table, const LatexDraftOptions& options, const TableLayoutOptions& layout);
 
     void normalizeDecCols(std::map<int, std::vector<std::string>>& table, const std::vector<int>& columns_list, int precision = 0, const std::string& delimiter = ",");
     void normalizePrjCols(std::map<int, std::vector<std::string>>& table);

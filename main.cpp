@@ -17,7 +17,7 @@ int main(int argc, char* argv[]) {
         converter.exportToFile("custom_table.tex", options);
         
         // Optional export to CSV (unchanged behavior)
-        converter.exportToCSV();
+        converter.exportToCSV("final.csv", true);
 
     } catch (const std::exception& e) {
         std::cerr << "Error: " << e.what() << std::endl;
