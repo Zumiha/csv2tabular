@@ -1,6 +1,7 @@
 #include <iostream>
 #include <streambuf>
 #include <string>
+#include <numeric>
 
 class IndentStreambuf : public std::streambuf {
 public:

@@ -145,7 +145,7 @@ void CSVtoXLTABularConverter::Convert(const std::string& csv_filename, const Con
     project_table_.clear();
     if (!settings_.prj_cols.empty()) {
         project_table_ = ExtractConstantColumns(parsed_table_, settings_.prj_cols, settings_.prj_cols_header);
-        normalizePrjCols(project_table_);
+        normalizePrjCols(project_table_[2]);
     }
     std::cout << "[LOG] Parsing completed\n";
 
@@ -194,8 +194,7 @@ void CSVtoXLTABularConverter::exportToFileImpl(const std::string& output_filenam
         throw std::runtime_error("Failed to open output file: " + output_filename);
     }
     const auto layout = ResolveLayout(settings_.table_layout, options.layout_overrides);
-    draftLaTeX(buildLaTeXData(options), options, layout);
-    outfile << this->latex_string_;
+    outfile << draftLaTeX(buildLaTeXData(options), options, layout);
     outfile.close();
 }
 
@@ -307,59 +306,19 @@ std::string CSVtoXLTABularConverter::draftLaTeX(
         ? headerLineRender(0, static_cast<int>(header.size()) - 1, header)
         : options.header_line_override;
     const std::string numbered_header = BuildNumberedHeaderLine(header.size());
-    const bool append_numbered_header = layout.numbered_header_line || !options.use_full_header_in_repeated_head;
-    const bool numbered_only_repeated_header =
-        layout.numbered_header_line || !options.use_full_header_in_repeated_head;
-    const std::string first_head = append_numbered_header
-        ? AppendNumberedHeaderLine(full_header, numbered_header)
-        : full_header;
-    const std::string repeated_head = numbered_only_repeated_header
-        ? numbered_header
-        : full_header;
+    const bool use_numbered_header = layout.numbered_header_line || !options.use_full_header_in_repeated_head;
+    const std::string first_head = use_numbered_header
+                    ? AppendNumberedHeaderLine(full_header, numbered_header)
+                    : full_header;
+    const std::string repeated_head = use_numbered_header
+                    ? numbered_header
+                    : full_header;
 
     latex_string_.clear();
     // latex_string_ += "\\newcounter{tablefigure}[section]\n"
     //                 "\\renewcommand{\\thetablefigure}{\\thesection.\\arabic{tablefigure}}\\n\n";
 
     int header_size = static_cast<int>(header.size());
-    auto calculated_table_configuration = calculateTableConfig(header_size, layout);
-
-    for (size_t i = 0; i < calculated_table_configuration.tables_rows_config.size(); ++i) {
-        int cell_start = calculated_table_configuration.tables_rows_config[i].col_start;
-        int cell_end = calculated_table_configuration.tables_rows_config[i].col_end;
-        int table_size = cell_end - cell_start + 1;
-
-        std::string page_header = first_head;
-        std::string page_repeated_header = repeated_head;
-
-        // For multi-page splits, keep the first page full header while the continuation header can be reduced to numbering.
-        if (cell_start != 0 || cell_end != header_size - 1) {
-            const std::string page_full_header = options.header_line_override.empty()
-                ? headerLineRender(cell_start, cell_end, header)
-                : options.header_line_override;
-            const std::string page_numbered_header =
-                BuildNumberedHeaderLine(static_cast<size_t>(cell_end - cell_start + 1));
-            page_header = append_numbered_header
-                ? AppendNumberedHeaderLine(page_full_header, page_numbered_header)
-                : page_full_header;
-            page_repeated_header = numbered_only_repeated_header
-                ? page_numbered_header
-                : page_full_header;
-        }
-
-        tableRender(
-            calculated_table_configuration.table_width,
-            table_size,
-            cell_start,
-            cell_end,
-            source_table.rows,
-            page_header,
-            page_repeated_header,
-            layout,
-            calculated_table_configuration.column_widths,
-            calculated_table_configuration.row_header_width
-        );
-    }
 
     if (layout.convert_type == TableType::Default) {
         std::cout << "[LOG] Drafting LaTeX as Default format table\n";
@@ -370,6 +329,41 @@ std::string CSVtoXLTABularConverter::draftLaTeX(
         latex_string_.clear();
         return latex_string_;
     }
+
+    auto calculated_table_configuration = calculateTableConfig(header_size, layout);
+
+    for (size_t i = 0; i < calculated_table_configuration.tables_rows_config.size(); ++i) {
+        int cell_start = calculated_table_configuration.tables_rows_config[i].col_start;
+        int cell_end = calculated_table_configuration.tables_rows_config[i].col_end;
+        std::string page_header = first_head;
+        std::string page_repeated_header = repeated_head;
+
+        // For multi-page splits, keep the first page full header while the continuation header can be reduced to numbering.
+        if (cell_start != 0 || cell_end != header_size - 1) {
+            const std::string page_full_header = options.header_line_override.empty()
+                ? headerLineRender(cell_start, cell_end, header)
+                : options.header_line_override;
+            const std::string page_numbered_header = BuildNumberedHeaderLine(static_cast<size_t>(cell_end - cell_start + 1));
+            page_header = use_numbered_header
+                ? AppendNumberedHeaderLine(page_full_header, page_numbered_header)
+                : page_full_header;
+            page_repeated_header = use_numbered_header
+                ? page_numbered_header
+                : page_full_header;
+        }
+
+        tableRender(
+            calculated_table_configuration.table_width,
+            cell_start,
+            cell_end,
+            source_table.rows,
+            page_header,
+            page_repeated_header,
+            layout,
+            calculated_table_configuration.column_widths,
+            calculated_table_configuration.row_header_width
+        );
+    }    
 
     std::cout << "[LOG] Drafting LaTeX completed\n";
     return latex_string_;
@@ -420,18 +414,15 @@ void CSVtoXLTABularConverter::normalizeDecCols(std::map<int, std::vector<std::st
     }
 }
 
-void CSVtoXLTABularConverter::normalizePrjCols(std::map<int, std::vector<std::string>> &table)
+void CSVtoXLTABularConverter::normalizePrjCols(std::vector<std::string>& row)
 {
-    auto vec_size = table[2].size();
-    std::vector<int> all_cols{}; all_cols.reserve(vec_size);
-    for (size_t i = 0; i < vec_size; i++) all_cols.push_back(static_cast<int>(i));
+    std::vector<int> all_cols; all_cols.reserve(row.size());
+    for (size_t i = 0; i < row.size(); ++i)
+        all_cols.push_back(static_cast<int>(i));
 
-    std::map<int, std::vector<std::string>> edit_map;
-    auto it = table.find(2);
-    edit_map.insert(*it);
-
-    normalizeDecCols(edit_map, all_cols, 1, this->settings_.decimal_delimiter);
-    table[2] = edit_map[2];
+    std::map<int, std::vector<std::string>> edit_map = {{0, row}};
+    normalizeDecCols(edit_map, all_cols, 1, settings_.decimal_delimiter);
+    row = edit_map[0];
 }
 
 bool CSVtoXLTABularConverter::IsEmptyRow(const std::vector<std::string> &row)
@@ -523,7 +514,6 @@ std::string CSVtoXLTABularConverter::headerLineRender(int start_cell, int end_ce
 
 void CSVtoXLTABularConverter::tableRender(
     int _table_width,
-    int table_size,
     int start_cell,
     int end_cell,
     const std::vector<std::vector<std::string>>& rows,
@@ -598,7 +588,6 @@ void CSVtoXLTABularConverter::tableRender(
     }
     oss << "\\end{xltabular}%\n\\vspace{0em}\n\n";
     latex_string_ += oss.str();
-    (void)table_size;
 }
 
 CSVtoXLTABularConverter::CalculatedTableConfiguration CSVtoXLTABularConverter::calculateTableConfig(
@@ -609,9 +598,11 @@ CSVtoXLTABularConverter::CalculatedTableConfiguration CSVtoXLTABularConverter::c
         throw std::invalid_argument("Table layout width and column limits must be positive");
     }
     if (layout.custom_column_number.size() != layout.custom_column_width.size()) {
+        std::cerr << "[WARN] Custom column numbers and widths must have matching lengths. "
+                  << "custom_column_number.size() = " << layout.custom_column_number.size()
+                  << ", custom_column_width.size() = " << layout.custom_column_width.size() << "\n";
         throw std::invalid_argument("Custom column numbers and widths must have matching lengths");
     }
-    const char column_type = ResolveColumnType(layout.custom_column_type);
 
     CalculatedTableConfiguration table_settings;
     table_settings.table_width = layout.table_width;

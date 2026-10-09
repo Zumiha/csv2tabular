@@ -62,7 +62,7 @@ public:
     void exportToFile(const std::string& output_filename, const LatexDraftOptions& options);
     void exportToCSV(const std::string& output_filename = "debug.csv", bool export_prj_table = false);
 
-    std::map<int, std::vector<std::string>> getParsedTable() const {
+    const std::map<int, std::vector<std::string>>& getParsedTable() const {
         return parsed_table_;
     }
 
@@ -90,7 +90,7 @@ private:
     std::string draftLaTeX(const TabularData& table, const LatexDraftOptions& options, const TableLayoutOptions& layout);
 
     void normalizeDecCols(std::map<int, std::vector<std::string>>& table, const std::vector<int>& columns_list, int precision = 0, const std::string& delimiter = ",");
-    void normalizePrjCols(std::map<int, std::vector<std::string>>& table);
+    void normalizePrjCols(std::vector<std::string>& row);
     
     bool IsEmptyRow(const std::vector<std::string>& row);
     // Pulls the given raw column indices out of every row. No validation, no
@@ -124,7 +124,6 @@ private:
     std::string headerLineRender(int start_cell, int end_cell, const std::vector<std::string>& header_);
     void tableRender(
         int _table_width,
-        int table_size,
         int start_cell,
         int end_cell,
         const std::vector<std::vector<std::string>>& rows,
