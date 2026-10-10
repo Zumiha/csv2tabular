@@ -656,51 +656,85 @@ CSVtoXLTABularConverter::CalculatedTableConfiguration CSVtoXLTABularConverter::c
         }
     }
 
-    // ── Step 4: pack pages by width, shrinking target width until the last
-    //    page clears min_table_width (or there's only one page total) ──
-    const float min_table_width = layout.remdnr_min * def_col_width;
-
-    int i = 0;
-    while (true) {
-        float target_width = effective_table_width - i * def_col_width;
-        if (target_width <= 0.0f)
-            throw std::runtime_error("calculateTableConfig: no valid column split found. Change max_columns or min_columns to allow a valid split.");
-
+    if (!layout.custom_column_number.empty()) {
+        // Custom widths affect page breaks, but the baseline width remains
+        // based on max_columns. Keep each page within both the width and
+        // column-count limits; a short final page is valid.
         table_settings.tables_rows_config.clear();
         int col_start = offset;
+        int page_column_count = 0;
         float running_width = 0.0f;
 
         for (int col = offset; col < header_size; ++col) {
-            float w = columns_width_array[col];
-            if (running_width > 0.0f && running_width + w > target_width) {
+            const float width = columns_width_array[col];
+            if (page_column_count > 0 &&
+                (page_column_count >= effective_columns ||
+                 running_width + width > effective_table_width)) {
                 table_settings.tables_rows_config.push_back({col_start, col - 1});
                 col_start = col;
+                page_column_count = 0;
                 running_width = 0.0f;
             }
-            running_width += w;
+
+            running_width += width;
+            ++page_column_count;
         }
-        table_settings.tables_rows_config.push_back({col_start, header_size - 1}); // post-loop push to add the last table
 
-        auto& last = table_settings.tables_rows_config.back();
-        float last_page_width = 0.0f;
-        for (int c = last.col_start; c <= last.col_end; ++c) last_page_width += columns_width_array[c];
-
-        bool acceptable = (table_settings.tables_rows_config.size() == 1) || (last_page_width >= min_table_width);
+        if (col_start < header_size) {
+            table_settings.tables_rows_config.push_back({col_start, header_size - 1});
+        }
 
         for (size_t p = 0; p < table_settings.tables_rows_config.size(); ++p) {
             std::cout << "Table " << p + 1 << ": col_start = " << table_settings.tables_rows_config[p].col_start
-                       << ", col_end = " << table_settings.tables_rows_config[p].col_end << "\n";
+                      << ", col_end = " << table_settings.tables_rows_config[p].col_end << "\n";
         }
+    } else {
+        // Preserve the existing uniform-width page balancing when no custom
+        // widths are configured.
+        const float min_table_width = layout.remdnr_min * def_col_width;
 
-        if (acceptable) {
-            std::cout << "Accepted at i=" << i << ", target_width=" << target_width
-                       << ", last_page_width=" << last_page_width << " (min " << min_table_width << ")\n";
-            break;
+        int i = 0;
+        while (true) {
+            float target_width = effective_table_width - i * def_col_width;
+            if (target_width <= 0.0f)
+                throw std::runtime_error("calculateTableConfig: no valid column split found. Change max_columns or min_columns to allow a valid split.");
+
+            table_settings.tables_rows_config.clear();
+            int col_start = offset;
+            float running_width = 0.0f;
+
+            for (int col = offset; col < header_size; ++col) {
+                float w = columns_width_array[col];
+                if (running_width > 0.0f && running_width + w > target_width) {
+                    table_settings.tables_rows_config.push_back({col_start, col - 1});
+                    col_start = col;
+                    running_width = 0.0f;
+                }
+                running_width += w;
+            }
+            table_settings.tables_rows_config.push_back({col_start, header_size - 1});
+
+            auto& last = table_settings.tables_rows_config.back();
+            float last_page_width = 0.0f;
+            for (int c = last.col_start; c <= last.col_end; ++c) last_page_width += columns_width_array[c];
+
+            bool acceptable = (table_settings.tables_rows_config.size() == 1) || (last_page_width >= min_table_width);
+
+            for (size_t p = 0; p < table_settings.tables_rows_config.size(); ++p) {
+                std::cout << "Table " << p + 1 << ": col_start = " << table_settings.tables_rows_config[p].col_start
+                           << ", col_end = " << table_settings.tables_rows_config[p].col_end << "\n";
+            }
+
+            if (acceptable) {
+                std::cout << "Accepted at i=" << i << ", target_width=" << target_width
+                           << ", last_page_width=" << last_page_width << " (min " << min_table_width << ")\n";
+                break;
+            }
+
+            std::cout << "Rejected: last_page_width=" << last_page_width << " < min_table_width=" << min_table_width
+                       << ". Retrying with i=" << (i + 1) << "\n";
+            ++i;
         }
-
-        std::cout << "Rejected: last_page_width=" << last_page_width << " < min_table_width=" << min_table_width
-                   << ". Retrying with i=" << (i + 1) << "\n";
-        ++i;
     }
 
     return table_settings;
