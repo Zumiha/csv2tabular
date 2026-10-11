@@ -24,28 +24,52 @@ std::vector<std::string> SelectColumns(
     return selected;
 }
 
-std::string BuildNumberedHeaderLine(size_t column_count)
+std::string BuildNumberedHeaderLine(
+    size_t column_count,
+    bool has_leading_number_column = false,
+    bool add_horizontal_rule = true)
 {
-    std::string line;
-    line += "\\rowcolor[RGB]{52,192,235}";
+    std::string line = "\\rowcolor[RGB]{150,255,255} ";
+    if (has_leading_number_column) {
+        line += "\\cellcolor{white}& ";
+    }
     for (size_t i = 0; i < column_count; ++i) {
         line += std::to_string(i + 1);
         if (i + 1 < column_count) {
             line += " & ";
         } else {
-            line += "\\\\ \\hline\n";
+            line += add_horizontal_rule ? "\\\\ \\hline\n" : "\\\\\n";
         }
     }
     return line;
 }
 
+std::string AddLeadingHeaderCell(
+    const std::string& header_line,
+    bool use_numbered_header,
+    size_t total_column_count)
+{
+    std::string result = "\\cellcolor{white}& " + header_line;
+    const std::string horizontal_rule = "\\\\ \\hline\n";
+    if (use_numbered_header && result.size() >= horizontal_rule.size() &&
+        result.compare(result.size() - horizontal_rule.size(), horizontal_rule.size(), horizontal_rule) == 0) {
+        result.replace(
+            result.size() - horizontal_rule.size(),
+            horizontal_rule.size(),
+            "\\\\ \\cline{2-" + std::to_string(total_column_count) + "}\n");
+    }
+    return result;
+}
+
 std::string AppendNumberedHeaderLine(
     const std::string& header_line,
-    const std::string& numbered_header_line)
+    const std::string& numbered_header_line,
+    bool preserve_horizontal_rule = false)
 {
     std::string combined = header_line;
     const std::string horizontal_rule = "\\hline\n";
-    if (combined.size() >= horizontal_rule.size() &&
+    if (!preserve_horizontal_rule &&
+        combined.size() >= horizontal_rule.size() &&
         combined.compare(combined.size() - horizontal_rule.size(), horizontal_rule.size(), horizontal_rule) == 0) {
         combined.erase(combined.size() - horizontal_rule.size());
     }
@@ -305,14 +329,18 @@ std::string CSVtoXLTABularConverter::draftLaTeX(
     const std::string full_header = options.header_line_override.empty()
         ? headerLineRender(0, static_cast<int>(header.size()) - 1, header)
         : options.header_line_override;
-    const std::string numbered_header = BuildNumberedHeaderLine(header.size());
     const bool use_numbered_header = layout.numbered_header_line || !options.use_full_header_in_repeated_head;
+    const bool has_number_column = layout.convert_type == TableType::NumbColumn;
+    const std::string full_header_with_number = has_number_column
+        ? AddLeadingHeaderCell(full_header, use_numbered_header, header.size() + 1)
+        : full_header;
+    const std::string numbered_header = BuildNumberedHeaderLine(header.size(), has_number_column);
     const std::string first_head = use_numbered_header
-                    ? AppendNumberedHeaderLine(full_header, numbered_header)
-                    : full_header;
+                    ? AppendNumberedHeaderLine(full_header_with_number, numbered_header, true)
+                    : full_header_with_number;
     const std::string repeated_head = use_numbered_header
-                    ? numbered_header
-                    : full_header;
+                    ? BuildNumberedHeaderLine(header.size(), has_number_column, !has_number_column)
+                    : full_header_with_number;
 
     latex_string_.clear();
     // latex_string_ += "\\newcounter{tablefigure}[section]\n"
@@ -324,6 +352,8 @@ std::string CSVtoXLTABularConverter::draftLaTeX(
         std::cout << "[LOG] Drafting LaTeX as Default format table\n";
     } else if (layout.convert_type == TableType::HeadColumn) {
         std::cout << "\n[LOG] Drafting LaTeX as Head Column format table\n";
+    } else if (layout.convert_type == TableType::NumbColumn) {
+        std::cout << "\n[LOG] Drafting LaTeX as Number Column format table\n";
     } else {
         std::cout << "Chosen convert type \"" << to_string(layout.convert_type) << "\" not implemented.";
         latex_string_.clear();
@@ -344,12 +374,27 @@ std::string CSVtoXLTABularConverter::draftLaTeX(
                 ? headerLineRender(cell_start, cell_end, header)
                 : options.header_line_override;
             const std::string page_numbered_header = BuildNumberedHeaderLine(static_cast<size_t>(cell_end - cell_start + 1));
+            const std::string page_full_header_with_number = has_number_column
+                ? AddLeadingHeaderCell(
+                    page_full_header,
+                    use_numbered_header,
+                    static_cast<size_t>(cell_end - cell_start + 2))
+                : page_full_header;
+            const std::string page_numbered_header_with_number = BuildNumberedHeaderLine(
+                static_cast<size_t>(cell_end - cell_start + 1),
+                has_number_column);
             page_header = use_numbered_header
-                ? AppendNumberedHeaderLine(page_full_header, page_numbered_header)
-                : page_full_header;
+                ? AppendNumberedHeaderLine(
+                    page_full_header_with_number,
+                    page_numbered_header_with_number,
+                    true)
+                : page_full_header_with_number;
             page_repeated_header = use_numbered_header
-                ? page_numbered_header
-                : page_full_header;
+                ? BuildNumberedHeaderLine(
+                    static_cast<size_t>(cell_end - cell_start + 1),
+                    has_number_column,
+                    !has_number_column)
+                : page_full_header_with_number;
         }
 
         tableRender(
@@ -541,6 +586,11 @@ void CSVtoXLTABularConverter::tableRender(
             col_spec = "|" + BuildColumnSpec(ResolveColumnType(layout.custom_column_type), row_header_width) + "|";
             diagbox = "\\diagbox{час}{L,мм} & ";
             break;
+        case TableType::NumbColumn:
+            total_cols = table_width + 1;
+            col_spec = "|>{\\columncolor[RGB]{224,224,224}}" +
+                BuildColumnSpec(ResolveColumnType(layout.custom_column_type), row_header_width) + "|";
+            break;
         default:
             throw std::runtime_error("tableRender: unsupported TableType");
     }
@@ -559,9 +609,7 @@ void CSVtoXLTABularConverter::tableRender(
         << "\\stepcounter{table}\n"
         // << "\\noindent Таблица~\\thetablefigure: " << layout.table_title << "~\\vspace{-0.75em}\n"
         << "\\noindent Таблица~\\thetable: " << layout.table_title << "~\\vspace{-0.75em}\n\\footnotesize\n"
-        << "\\begin{xltabular}{" << std::to_string(_table_width) << "mm}{" << col_spec << "}\n"
-        << "\\hline\n"
-        << diagbox << header_line_
+        << "\\begin{xltabular}{" << std::to_string(_table_width) << "mm}{" << col_spec << "} \\hline\n"        << diagbox << header_line_
         << "\\endfirsthead\n"
         << "\\multicolumn{" << std::to_string(total_cols) << "}{@{}l}{\\small\\sl продолжение на предыдущей странице}\\\\ \\hline\n"
         << diagbox << repeated_header_line_
@@ -571,10 +619,13 @@ void CSVtoXLTABularConverter::tableRender(
         << "\\endlastfoot\n";
 
     // Fill table rows
-    for (const auto& fields : rows) {
+    for (size_t row_index = 0; row_index < rows.size(); ++row_index) {
+        const auto& fields = rows[row_index];
         // If need Row Header
         if (layout.convert_type == TableType::HeadColumn) {
             oss << fields[0] << " & ";
+        } else if (layout.convert_type == TableType::NumbColumn) {
+            oss << row_index + 1 << " & ";
         }
 
         for (size_t i = start_cell; i < static_cast<size_t>(end_cell) + 1; ++i) {
@@ -606,9 +657,12 @@ CSVtoXLTABularConverter::CalculatedTableConfiguration CSVtoXLTABularConverter::c
 
     CalculatedTableConfiguration table_settings;
     table_settings.table_width = layout.table_width;
-    const int offset = (layout.convert_type == TableType::HeadColumn) ? 1 : 0;
+    const bool has_leading_column =
+        layout.convert_type == TableType::HeadColumn || layout.convert_type == TableType::NumbColumn;
+    const int offset = has_leading_column ? 1 : 0;
+    const int first_data_column = layout.convert_type == TableType::HeadColumn ? 1 : 0;
     if (layout.max_columns <= offset) {
-        throw std::invalid_argument("Table layout max_columns must exceed the row-header offset");
+        throw std::invalid_argument("Table layout max_columns must exceed the leading-column offset");
     }
 
     // ── Step 1: resolve row-header width FIRST (default, or custom override) ──
@@ -638,7 +692,8 @@ CSVtoXLTABularConverter::CalculatedTableConfiguration CSVtoXLTABularConverter::c
             continue;
         }
 
-        if (offset == 1 && raw_idx == 0) continue; // already resolved into row_header_width above
+        if (layout.convert_type == TableType::HeadColumn && raw_idx == 0)
+            continue; // already resolved into row_header_width above
 
         columns_width_array[raw_idx] = width;
     }
@@ -646,7 +701,7 @@ CSVtoXLTABularConverter::CalculatedTableConfiguration CSVtoXLTABularConverter::c
 
     // ── Guard: a single column wider than the largest possible page target
     //    can never be fixed by shrinking i, so fail fast instead of looping ──
-    for (int col = offset; col < header_size; ++col) {
+    for (int col = first_data_column; col < header_size; ++col) {
         if (columns_width_array[col] > effective_table_width) {
             throw std::runtime_error(
                 "calculateTableConfig: column " + std::to_string(col + 1) +
@@ -661,11 +716,11 @@ CSVtoXLTABularConverter::CalculatedTableConfiguration CSVtoXLTABularConverter::c
         // based on max_columns. Keep each page within both the width and
         // column-count limits; a short final page is valid.
         table_settings.tables_rows_config.clear();
-        int col_start = offset;
+        int col_start = first_data_column;
         int page_column_count = 0;
         float running_width = 0.0f;
 
-        for (int col = offset; col < header_size; ++col) {
+        for (int col = first_data_column; col < header_size; ++col) {
             const float width = columns_width_array[col];
             if (page_column_count > 0 &&
                 (page_column_count >= effective_columns ||
@@ -700,10 +755,10 @@ CSVtoXLTABularConverter::CalculatedTableConfiguration CSVtoXLTABularConverter::c
                 throw std::runtime_error("calculateTableConfig: no valid column split found. Change max_columns or min_columns to allow a valid split.");
 
             table_settings.tables_rows_config.clear();
-            int col_start = offset;
+            int col_start = first_data_column;
             float running_width = 0.0f;
 
-            for (int col = offset; col < header_size; ++col) {
+            for (int col = first_data_column; col < header_size; ++col) {
                 float w = columns_width_array[col];
                 if (running_width > 0.0f && running_width + w > target_width) {
                     table_settings.tables_rows_config.push_back({col_start, col - 1});

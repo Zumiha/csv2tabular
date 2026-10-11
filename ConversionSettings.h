@@ -15,6 +15,7 @@ std::vector<int> Apply1BasedTo0Based(const std::vector<int>& one_based);
 
 enum class TableType {
     Default,
+    NumbColumn,
     HeadColumn,
     Other
 };
@@ -37,6 +38,7 @@ constexpr std::string_view to_string(TableType t)
         case TableType::Default:    return "Default";
         case TableType::HeadColumn: return "HeadColumn";
         case TableType::Other:      return "Other";
+        case TableType::NumbColumn: return "NumbColumn";
         default:                    return "Unknown";
     }
 }
