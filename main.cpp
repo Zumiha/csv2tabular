@@ -8,18 +8,25 @@ int main(int argc, char* argv[]) {
         converter.exportToFile("default_table.tex");
 
         // Sample custom export: reorder columns and keep rows with values in every selected column.
+        // Sorted export example: converter-owned transformations and layout
+        // remain in effect; sorting only rearranges the selected data rows.
         LatexDraftOptions options;
+        options.layout_overrides.table_title = "Top rows by F";
         options.layout_overrides.custom_column_type = 'M'; // Use 'm' for middle-aligned columns
-        options.column_order = {5, 6, 1, 7, 8, 0, 2, 9};
-        options.layout_overrides.table_width = 180;
-        options.layout_overrides.max_columns = static_cast<int>(options.column_order.size());
-        options.layout_overrides.custom_column_number = std::vector<int>{0, 1, 6, 7};
-        options.layout_overrides.custom_column_width = std::vector<int>{30, 30, 10, 10};
-
+        options.column_order = {5, 6, 1, 7, 8, 9, 0, 2};
+        options.layout_overrides.max_columns = 10;
+        options.layout_overrides.table_width = 140;
+        options.layout_overrides.custom_column_number = std::vector<int>{0, 1};
+        options.layout_overrides.custom_column_width = std::vector<int>{25, 25};
         options.ignore_empty_rows = true;
-        options.header_line_override = "lat & lon & anom num & met state & F & KP & length & $T_{safe}$ \\\\ \\hline\n";
-        options.use_full_header_in_repeated_head = false;
-        converter.exportToFile("custom_table.tex", options);
+        options.layout_overrides.numbered_header_line = false;
+        options.header_line_override = "lat & lon & anom num & met state & F & $T_{safe}$ & KP & length \\\\ \\hline\n";
+        options.use_full_header_in_repeated_head = true;
+        options.sort_options = sorttable::SortOptions{
+            4, sorttable::SortOrder::Ascending // selected-output column index
+        };
+        options.max_rows = 5;
+        converter.exportToFile("sorted_table.tex", options);
         
         // Optional export to CSV
         converter.exportToCSV("final.csv", true);
