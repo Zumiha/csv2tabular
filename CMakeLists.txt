@@ -12,6 +12,7 @@ set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/bin/archdir)
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/libs/csvparser)
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/libs/iniparser)
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/libs/utils)
+add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/libs/sorttable)
 
 add_library(csv2xltabular STATIC
     ConversionSettings.cpp
@@ -21,7 +22,7 @@ add_library(csv2xltabular STATIC
 )
 
 target_include_directories(csv2xltabular PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
-target_link_libraries(csv2xltabular PUBLIC csvParser IniParser Utils)
+target_link_libraries(csv2xltabular PUBLIC csvParser IniParser Utils sorttable)
 
 set_target_properties(Utils PROPERTIES LINKER_LANGUAGE CXX)
 
