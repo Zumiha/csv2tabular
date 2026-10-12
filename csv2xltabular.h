@@ -5,16 +5,12 @@
 #include "csvParser.h"
 #include "IniParser.h"
 #include "Utils.h"
+#include "TableSorter.h"
 
 #include <memory>
 #include <optional>
-
 #include <iostream>
 #include <fstream>
-#include <string>
-#include <map>
-#include <vector>
-
 #include <algorithm>
 #include <iomanip>
 
@@ -23,6 +19,8 @@ struct LatexDraftOptions {
     std::string header_line_override;     // optional explicit header line to use
     bool use_full_header_in_repeated_head = true; // false => first head full + numbering, repeated head numbering only
     bool ignore_empty_rows = false;        // if true, drop rows with any empty selected column
+    std::optional<sorttable::SortOptions> sort_options; // sort selected output columns before applying max_rows
+    int max_rows = -1;                    // maximum data rows after sorting; -1 = all, 0 = none
     struct LayoutOverrides {
         std::optional<TableType> convert_type;
         std::optional<std::string> table_title;
@@ -78,16 +76,11 @@ private:
     std::map<int, std::vector<std::string>> project_table_;
     bool table_converted_ = false;
 
-    struct TabularData {
-        std::vector<std::string> header;
-        std::vector<std::vector<std::string>> rows;
-    };
-
     void transformTable();
     void formatTable();
     void exportToFileImpl(const std::string& output_filename, const LatexDraftOptions& options);
-    TabularData buildLaTeXData(const LatexDraftOptions& options) const;
-    std::string draftLaTeX(const TabularData& table, const LatexDraftOptions& options, const TableLayoutOptions& layout);
+    sorttable::TabularData buildLaTeXData(const LatexDraftOptions& options) const;
+    std::string draftLaTeX(const sorttable::TabularData& table, const LatexDraftOptions& options, const TableLayoutOptions& layout);
 
     void normalizeDecCols(std::map<int, std::vector<std::string>>& table, const std::vector<int>& columns_list, int precision = 0, const std::string& delimiter = ",");
     void normalizePrjCols(std::vector<std::string>& row);

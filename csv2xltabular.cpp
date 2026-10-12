@@ -285,10 +285,10 @@ void CSVtoXLTABularConverter::formatTable()
     }
 }
 
-CSVtoXLTABularConverter::TabularData CSVtoXLTABularConverter::buildLaTeXData(
+sorttable::TabularData CSVtoXLTABularConverter::buildLaTeXData(
     const LatexDraftOptions& options) const
 {
-    TabularData data;
+    sorttable::TabularData data;
     auto row = converted_table_.begin();
     if (settings_.include_header) {
         data.header = settings_.sheet_header;
@@ -308,11 +308,21 @@ CSVtoXLTABularConverter::TabularData CSVtoXLTABularConverter::buildLaTeXData(
         std::cout << "[DBG] ignore_empty_rows: kept " << data.rows.size() << " / " << before_count
                   << " rows across " << data.header.size() << " selected columns\n";
     }
+
+    if (options.max_rows < -1) {
+        throw std::invalid_argument("max_rows must be -1 or greater");
+    }
+    if (options.sort_options) {
+        sorttable::sort(data, *options.sort_options);
+    }
+    if (options.max_rows >= 0 && data.rows.size() > static_cast<std::size_t>(options.max_rows)) {
+        data.rows.resize(static_cast<std::size_t>(options.max_rows));
+    }
     return data;
 }
 
 std::string CSVtoXLTABularConverter::draftLaTeX(
-    const TabularData& source_table,
+    const sorttable::TabularData& source_table,
     const LatexDraftOptions& options,
     const TableLayoutOptions& layout)
 {
