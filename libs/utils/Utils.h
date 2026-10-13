@@ -1,7 +1,10 @@
 #include <iostream>
 #include <streambuf>
+#include <cstddef>
+#include <map>
 #include <string>
 #include <numeric>
+#include <vector>
 
 class IndentStreambuf : public std::streambuf {
 public:
@@ -49,3 +52,17 @@ struct ConstantColumnsCheck {
     std::vector<std::string> reference_row; // first non-empty row found
     std::vector<std::string> errors;        // empty = every row matched it
 };
+
+struct ColumnAggregate {
+    std::string value;
+    std::size_t count = 0;
+    double sum = 0.0;
+};
+
+// Groups rows by a zero-based column and sums the numeric values in another
+// zero-based column. Empty sum cells contribute zero; invalid values throw.
+// Results retain the order in which each group first appears in the table.
+std::vector<ColumnAggregate> AggregateByColumn(
+    const std::map<int, std::vector<std::string>>& table,
+    int group_column,
+    int sum_column);
