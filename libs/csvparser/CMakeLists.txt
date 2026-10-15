@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.20.0)
-project(csvParser VERSION 0.1)
+project(csvParser VERSION 0.2)
 set(SOURCE_LIB csvParser.cpp)
-set(SOURCE_HD csvParser.h)
+set(SOURCE_HD csvParser.h TabularData.h)
 add_library(${PROJECT_NAME} STATIC ${SOURCE_LIB} ${SOURCE_HD})
 target_include_directories(${PROJECT_NAME} PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})

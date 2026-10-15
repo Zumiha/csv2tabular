@@ -1,3 +1,6 @@
+#ifndef UTILS_H
+#define UTILS_H
+
 #include <iostream>
 #include <streambuf>
 #include <cstddef>
@@ -5,6 +8,7 @@
 #include <string>
 #include <numeric>
 #include <vector>
+#include "TabularData.h"
 
 class IndentStreambuf : public std::streambuf {
 public:
@@ -63,6 +67,8 @@ struct ColumnAggregate {
 // zero-based column. Empty sum cells contribute zero; invalid values throw.
 // Results retain the order in which each group first appears in the table.
 std::vector<ColumnAggregate> AggregateByColumn(
-    const std::map<int, std::vector<std::string>>& table,
+    const TabularData& table,
     int group_column,
     int sum_column);
+
+#endif // UTILS_H

@@ -17,6 +17,8 @@ add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/libs/sorttable)
 add_library(csv2xltabular STATIC
     ConversionSettings.cpp
     ConversionSettings.h
+    LaTeXExporter.cpp
+    LaTeXExporter.h
     csv2xltabular.cpp
     csv2xltabular.h
 )

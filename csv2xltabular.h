@@ -2,37 +2,17 @@
 #define CSV2XTABULAR_H
 
 #include "ConversionSettings.h"
+#include "LaTeXExporter.h"
 #include "csvParser.h"
 #include "IniParser.h"
 #include "Utils.h"
 #include "TableSorter.h"
 
 #include <memory>
-#include <optional>
 #include <iostream>
 #include <fstream>
 #include <algorithm>
 #include <iomanip>
-
-struct LatexDraftOptions {
-    std::vector<int> column_order;        // 0-based; empty => current order
-    std::string header_line_override;     // optional explicit header line to use
-    bool use_full_header_in_repeated_head = true; // false => first head full + numbering, repeated head numbering only
-    bool ignore_empty_rows = false;        // if true, drop rows with any empty selected column
-    std::optional<sorttable::SortOptions> sort_options; // sort selected output columns before applying max_rows
-    int max_rows = -1;                    // maximum data rows after sorting; -1 = all, 0 = none
-    struct LayoutOverrides {
-        std::optional<TableType> convert_type;
-        std::optional<std::string> table_title;
-        std::optional<int> table_width;
-        std::optional<int> max_columns;
-        std::optional<int> remdnr_min;
-        std::optional<char> custom_column_type;
-        std::optional<bool> numbered_header_line;
-        std::optional<std::vector<int>> custom_column_number;
-        std::optional<std::vector<int>> custom_column_width;
-    } layout_overrides;
-};
 
 class CSVtoXLTABularConverter {
 public:
@@ -58,10 +38,19 @@ public:
 
     void exportToFile(const std::string& output_filename = "wt_table.tex");
     void exportToFile(const std::string& output_filename, const LatexDraftOptions& options);
-    void exportToCSV(const std::string& output_filename = "debug.csv", bool export_prj_table = false);
+    void exportToCSV(const std::string& output_filename = "debug.csv");
+    // Writes project metadata from the last parsed table using explicitly
+    // supplied settings; it does not require the converter's INI constructor.
+    void exportProjectInfoCSV(const ConversionSettings& settings, const std::string& output_filename = "const_val_rows.csv");
 
-    const std::map<int, std::vector<std::string>>& getParsedTable() const {
+    TabularData getParsedTable() const {
         return parsed_table_;
+    }
+
+    // Returns the transformed table by value so callers can work on a copy
+    // without mutating the converter's internal conversion state.
+    TabularData getConvertedTable() const {
+        return converted_table_;
     }
 
 private:
@@ -70,72 +59,31 @@ private:
     std::unique_ptr<IniParser> ini_parser_; // set by the 2-arg ctor, for convert()'s sake
 
     ConversionSettings settings_;
-    std::map<int, std::vector<std::string>> parsed_table_; // raw table after CSV parsing
-    std::map<int, std::vector<std::string>> converted_table_; // transformed data rows
-    std::map<int, std::vector<std::string>> formatted_table_; // converted table prepared for CSV output
-    std::map<int, std::vector<std::string>> project_table_;
+    TabularData parsed_table_; // raw table after CSV parsing
+    TabularData converted_table_; // converted table prepared for CSV output
     bool table_converted_ = false;
 
     void transformTable();
-    void formatTable();
     void exportToFileImpl(const std::string& output_filename, const LatexDraftOptions& options);
-    sorttable::TabularData buildLaTeXData(const LatexDraftOptions& options) const;
-    std::string draftLaTeX(const sorttable::TabularData& table, const LatexDraftOptions& options, const TableLayoutOptions& layout);
+    TabularData buildLaTeXData() const;
 
-    void normalizeDecCols(std::map<int, std::vector<std::string>>& table, const std::vector<int>& columns_list, int precision = 0, const std::string& delimiter = ",");
-    void normalizePrjCols(std::vector<std::string>& row);
-    
-    bool IsEmptyRow(const std::vector<std::string>& row);
+    static void normalizeDecCols(TabularData& table, const std::vector<int>& columns_list, int precision = 0, const std::string& delimiter = ",");
+
     // Pulls the given raw column indices out of every row. No validation, no
     // instance state needed — pure reshape. Reusable for previews/other checks
     // beyond the constant-column use case below.
-    std::map<int, std::vector<std::string>> ExtractColumns(const std::map<int, std::vector<std::string>>& table,const std::vector<int>& columns);
+    TabularData ExtractColumns(const TabularData& table, const std::vector<int>& columns) const;
 
     // Result of checking that a (typically already-extracted) table's non-empty
     // rows all hold the same values. Non-throwing — same "check, report every
     // problem" shape as ValidateSettings, so callers can preview data quality
     // before committing to a run.
-    ConstantColumnsCheck CheckConstantRows(const std::map<int, std::vector<std::string>>& table);
+    ConstantColumnsCheck CheckConstantRows(const TabularData& table) const;
 
-    // Extract + check + reshape into a 1-or-2-row table, in one call — what
-    // Convert() needs for prj_cols. Throws on the first check
-    // failure (this call site wants "value or exception", not a report).
-    // headers empty (default): result is just {2: reference_row}, no header row.
-    // headers non-empty: result is {1: headers, 2: reference_row}.
-    std::map<int, std::vector<std::string>> ExtractConstantColumns(
-        const std::map<int, std::vector<std::string>>& table,
-        const std::vector<int>& columns,
-        const std::vector<std::string>& headers = {});
+    ConstantColumnsCheck CheckProjectColumns(const ConversionSettings& settings) const;
+    void invalidateConversion() noexcept;
+    TabularData buildProjectTable(const ConversionSettings& settings) const;
 
-    struct TableColumnRange {
-        int col_start;
-        int col_end;
-    };
-
-    std::string latex_string_;
-
-    std::string headerLineRender(int start_cell, int end_cell, const std::vector<std::string>& header_);
-    void tableRender(
-        int _table_width,
-        int start_cell,
-        int end_cell,
-        const std::vector<std::vector<std::string>>& rows,
-        const std::string& header_line_,
-        const std::string& repeated_header_line_,
-        const TableLayoutOptions& layout,
-        const std::vector<float>& column_widths,
-        float row_header_width
-    );
-
-    struct CalculatedTableConfiguration {
-        int table_width = 0;
-        float row_header_width = 0.0f;
-        std::vector<float> column_widths;
-        std::vector<TableColumnRange> tables_rows_config;
-    };
-    CalculatedTableConfiguration calculateTableConfig(
-        int header_size,
-        const TableLayoutOptions& layout) const;
 };
 
 #endif // CSV2XTABULAR_H

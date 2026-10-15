@@ -42,14 +42,16 @@ double ParseAggregateValue(const std::string& value, int row, int column)
 } // namespace
 
 std::vector<ColumnAggregate> AggregateByColumn(
-    const std::map<int, std::vector<std::string>>& table,
+    const TabularData& table,
     int group_column,
     int sum_column)
 {
     std::vector<ColumnAggregate> aggregates;
     std::map<std::string, std::size_t> aggregate_indices;
 
-    for (const auto& [row_number, fields] : table) {
+    for (std::size_t row_index = 0; row_index < table.rows.size(); ++row_index) {
+        const auto& fields = table.rows[row_index];
+        const int row_number = static_cast<int>(row_index + 1);
         // Check if the specified columns are within the bounds of the current row
         for (int column : {group_column, sum_column}) {
             if (column < 0 || column >= static_cast<int>(fields.size())) {

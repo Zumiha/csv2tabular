@@ -8,14 +8,12 @@ CSVParser::CSVParser(const std::string& filename, char delimiter)
     }
 }
 
-// Parse entire CSV file into map structure
-// map with row number and vector<string> of values
-std::map<int, std::vector<std::string>> CSVParser::parse_all(int start_row, int start_col)
+TabularData CSVParser::parse_all(int start_row, int start_col)
 {
     // 1-based interface — reject zero or negative values
     if (start_row < 1 || start_col < 1) throw std::invalid_argument("start_row and start_col must be >= 1");
 
-    std::map<int, std::vector<std::string>> table;
+    TabularData table;
     reset_stream(); // Ensure starting from beginning
 
     // ── Phase 1: confirm parameters and reset state ──────────────────────────
@@ -41,46 +39,53 @@ std::map<int, std::vector<std::string>> CSVParser::parse_all(int start_row, int 
     // ── Phase 3: parse rows into table ───────────────────────────────────────
     while (auto row = next_row(start_col)) {
         if (!row->fields.empty()) {
-            table[static_cast<int>(row->line_number)] = std::move(row->fields);
+            if (table.header.empty()) {
+                table.header = std::move(row->fields);
+            } else {
+                table.rows.push_back(std::move(row->fields));
+            }
         } else {
             std::cerr << "[WARN] row " << row->line_number << " has 0 fields — skipped\n";
         }
     }
 
     // ── Phase 4: summary ─────────────────────────────────────────────────────
-    std::cerr << "parse_all complete -- table size=" << table.size() << "\n-----------------------------\n";
+    std::cerr << "parse_all complete -- table rows=" << table.rows.size() << "\n-----------------------------\n";
 
-    if (table.empty())
+    if (table.header.empty())
         throw std::runtime_error("No data found from row " + std::to_string(start_row) + ", col " + std::to_string(start_col));
     return table;
 }
 
-void CSVParser::mergeColumns(std::map<int, std::vector<std::string>> &table, size_t primary_col, size_t secondary_col)
+void CSVParser::mergeColumns(TabularData& table, size_t primary_col, size_t secondary_col)
 {
     std::cout << "Merging columns " << primary_col << " and " << secondary_col << "\n";
 
-    if (table[1].size() < std::max(primary_col, secondary_col) + 1) {
+    if (table.header.size() < std::max(primary_col, secondary_col) + 1) {
         std::ostringstream oss;
-        oss << "Out of range for merge: row has only " << table[1].size() << " columns, but need at least " << std::max(primary_col, secondary_col) + 1;
+        oss << "Out of range for merge: row has only " << table.header.size() << " columns, but need at least " << std::max(primary_col, secondary_col) + 1;
         throw std::runtime_error(oss.str());
     }
 
-    for (auto& [row, field] : table) {        
+    const auto merge_row = [&](std::vector<std::string>& field, std::size_t row) {
         if (field[primary_col].empty() || field[primary_col] == "\"\"") {
             field[primary_col] = field[secondary_col]; // merge into empty primary
-            continue;
+            return;
         } 
         if (!field[secondary_col].empty() && field[secondary_col] != "\"\"") {
             std::ostringstream oss;
             oss << "Row " << row << ": cannot merge non-empty columns " << primary_col << " and " << secondary_col;
             throw std::runtime_error(oss.str());
         }
-    }
+    };
+    merge_row(table.header, 0);
+    for (std::size_t i = 0; i < table.rows.size(); ++i)
+        merge_row(table.rows[i], i + 1);
 }
 
-void CSVParser::mergeColumns(std::map<int, std::vector<std::string>> &table, const std::vector<int> &from, const std::vector<int> &into)
+void CSVParser::mergeColumns(TabularData& table, const std::vector<int>& from, const std::vector<int>& into)
 {
-    if (table.empty()) return;
+    if (table.header.empty()) return;
     if (from.size() != into.size())
         throw std::invalid_argument("[ERROR] mergeColumns: 'from' and 'into' must have equal length");
     
@@ -105,10 +110,10 @@ void CSVParser::mergeColumns(std::map<int, std::vector<std::string>> &table, con
     }
 }
 
-void CSVParser::reorderColumns(std::map<int, std::vector<std::string>> &table, const std::vector<int> &new_order)
+void CSVParser::reorderColumns(TabularData& table, const std::vector<int>& new_order)
 {
-    if (table.empty()) return;
-    size_t col_count = table.begin()->second.size();
+    if (table.header.empty()) return;
+    size_t col_count = table.header.size();
     // Validate: new_order must be a permutation of 1..col_count
     if (new_order.size() != col_count) throw std::invalid_argument("reorderColumns: new_order size must match column count");
 
@@ -122,21 +127,24 @@ void CSVParser::reorderColumns(std::map<int, std::vector<std::string>> &table, c
     }
 
     // Single-pass rebuild per row — no chained insert/delete, no ordering issue
-    for (auto& [row_num, fields] : table) {
+    const auto reorder_row = [&](std::vector<std::string>& fields) {
         std::vector<std::string> rebuilt;
         rebuilt.reserve(fields.size());
         for (int idx : new_order)
             rebuilt.push_back(fields[idx]); // 0-based expected
         fields = std::move(rebuilt);
-    }
+    };
+    reorder_row(table.header);
+    for (auto& fields : table.rows)
+        reorder_row(fields);
 }
 
-void CSVParser::reorderColumns(std::map<int, std::vector<std::string>> &table, const std::vector<int>& from, const std::vector<int>& to)
+void CSVParser::reorderColumns(TabularData& table, const std::vector<int>& from, const std::vector<int>& to)
 {
     if (from.size() != to.size())
         throw std::invalid_argument("[ERROR] reorderColumns: from and to must have equal length");
-    if (table.empty()) return;
-    int col_count = static_cast<int>(table.begin()->second.size());
+    if (table.header.empty()) return;
+    int col_count = static_cast<int>(table.header.size());
 
     // 1st build destination→source map
     // key = destination index, value = source index
@@ -154,7 +162,7 @@ void CSVParser::reorderColumns(std::map<int, std::vector<std::string>> &table, c
     for (const auto& [dst, src] : placement) moved_sources.insert(src);
 
     // 3rd rebuild each row
-    for (auto& [row_num, fields] : table) {
+    const auto reorder_row = [&](std::vector<std::string>& fields) {
         // Collect non-moved elements in original order
         std::vector<std::string> remaining;
         remaining.reserve(col_count - static_cast<int>(moved_sources.size()));
@@ -172,63 +180,73 @@ void CSVParser::reorderColumns(std::map<int, std::vector<std::string>> &table, c
             if (!placement.count(i)) result[i] = remaining[rem_idx++];
         
         fields = std::move(result);
-    }
+    };
+    reorder_row(table.header);
+    for (auto& fields : table.rows)
+        reorder_row(fields);
 }
 
-void CSVParser::deleteColumn(std::map<int, std::vector<std::string>> &table, size_t column_index)
+void CSVParser::deleteColumn(TabularData& table, size_t column_index)
 {
     std::cout << "Deleting column " << column_index << "\n";
-    if (table[1].size() < column_index + 1) {
+    if (table.header.size() < column_index + 1) {
         std::ostringstream oss;
-        oss << "Out of range for merge: row has only " << table[1].size() << " columns";
+        oss << "Out of range for merge: row has only " << table.header.size() << " columns";
         throw std::runtime_error(oss.str());
     } 
-
-    for (auto& [row_num, field]: table) {
+    table.header.erase(table.header.begin() + column_index);
+    for (auto& field : table.rows)
         field.erase(field.begin() + column_index);
-    }
 }
 
-void CSVParser::deleteColumns(std::map<int, std::vector<std::string>> &table, const std::vector<int> &columns_list)
+void CSVParser::deleteColumns(TabularData& table, const std::vector<int>& columns_list)
 {
     std::cout << "[DBG] Deleting specified columns\n";    
-    if (table[1].size() < *std::max_element(columns_list.begin(), columns_list.end()) + 1) {
+    if (columns_list.empty()) return;
+    if (table.header.size() < static_cast<std::size_t>(*std::max_element(columns_list.begin(), columns_list.end()) + 1)) {
         std::ostringstream oss;
-        oss << "Out of range for merge: row has only " << table[1].size() << " columns, but need at least " << *std::max_element(columns_list.begin(), columns_list.end()) + 1;
+        oss << "Out of range for merge: row has only " << table.header.size() << " columns, but need at least " << *std::max_element(columns_list.begin(), columns_list.end()) + 1;
         throw std::runtime_error(oss.str());
     }
-
-    for (auto& [row_num, field] : table) {
-        for (const auto& element : columns_list) {
-            field.erase(field.begin() + element);
+    auto erase_columns = [&](std::vector<std::string>& fields) {
+        for (const auto element : columns_list) {
+            if (element < 0 || element >= static_cast<int>(fields.size()))
+                throw std::out_of_range("deleteColumns: column index out of range");
+            fields.erase(fields.begin() + element);
         }
-    }
+    };
+    erase_columns(table.header);
+    for (auto& fields : table.rows)
+        erase_columns(fields);
 }
 
-std::map<int, std::vector<std::string>> CSVParser::extractTable(const std::map<int, std::vector<std::string>> &table, const std::vector<int> &columns_list)
+TabularData CSVParser::extractTable(const TabularData& table, const std::vector<int>& columns_list)
 {
-    std::map<int, std::vector<std::string>> extracted;
-    
-
-    // std::cout << "\nExtracting project data.\n";
-    for (auto& [row_num, fields] : table) {
+    TabularData extracted;
+    const auto extract_row = [&](const std::vector<std::string>& fields, std::vector<std::string>& output) {
         for (const auto& element : columns_list) {
-            auto it = fields.begin() + element;
-            extracted[row_num].push_back(*it);
+            if (element < 0 || element >= static_cast<int>(fields.size()))
+                throw std::out_of_range("extractTable: column index out of range");
+            output.push_back(fields[element]);
         }
+    };
+    extract_row(table.header, extracted.header);
+    for (const auto& row : table.rows) {
+        extracted.rows.emplace_back();
+        extract_row(row, extracted.rows.back());
     }
     return extracted;
 }
 
 
 
-void CSVParser::export_csv(const std::map<int, std::vector<std::string>> &table, const std::string &filename) const
+void CSVParser::export_csv(const TabularData& table, const std::string& filename) const
 {
     std::ofstream out(filename);
     if (!out.is_open())
         throw std::runtime_error("Cannot open output file: " + filename);
 
-    for (const auto& [row_num, fields] : table) {
+    const auto write_row = [&](const std::vector<std::string>& fields) {
         for (size_t i = 0; i < fields.size(); ++i) {
             const std::string& field = fields[i];
 
@@ -252,12 +270,18 @@ void CSVParser::export_csv(const std::map<int, std::vector<std::string>> &table,
             if (i < fields.size() - 1) out << delimiter_;
         }
         out << '\n';
-    }
+    };
+    if (!table.header.empty())
+        write_row(table.header);
+    for (const auto& row : table.rows)
+        write_row(row);
 
     if (out.fail())
         throw std::runtime_error("Write error on file: " + filename);
 
-    std::cout << "[DBG] Exported " << table.size() << " rows to: " << filename << "\n";
+    std::cout << "[DBG] Exported "
+              << table.rows.size() + (table.header.empty() ? 0 : 1)
+              << " rows to: " << filename << "\n";
 }
 
 std::optional<dataformat::Row> CSVParser::next_row(int start_col) {

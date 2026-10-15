@@ -6,6 +6,8 @@ int main(int argc, char* argv[]) {
         converter.convert();
         // Default export from converted data using the configured INI header/layout.
         converter.exportToFile("default_table.tex");
+        // Optional export to CSV
+        converter.exportToCSV("final.csv");
 
         // Sample custom export: reorder columns and keep rows with values in every selected column.
         // Sorted export example: converter-owned transformations and layout
@@ -28,8 +30,10 @@ int main(int argc, char* argv[]) {
         options.max_rows = 5;
         converter.exportToFile("sorted_table.tex", options);
         
-        // Optional export to CSV
-        converter.exportToCSV("final.csv", true);
+        
+        // IniParser project_settings_parser("settings.ini");
+        // const auto project_settings = LoadSettingsFromIni(project_settings_parser);
+        // converter.exportProjectInfoCSV(project_settings);
 
     } catch (const std::exception& e) {
         std::cerr << "Error: " << e.what() << std::endl;

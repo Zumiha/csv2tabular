@@ -3,13 +3,11 @@
 
 #include <string>
 #include <vector>
+#include "TabularData.h"
 
 namespace sorttable {
 
-struct TabularData {
-    std::vector<std::string> header;
-    std::vector<std::vector<std::string>> rows;
-};
+using ::TabularData;
 
 enum class SortOrder { Ascending, Descending };
 
