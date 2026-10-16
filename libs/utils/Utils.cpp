@@ -17,8 +17,7 @@ std::optional<double> TryParseAggregateValue(const std::string& value)
                && std::isspace(static_cast<unsigned char>(value[consumed]))) {
             ++consumed;
         }
-        if (consumed != value.size() || !std::isfinite(parsed))
-            return std::nullopt;
+        if (consumed != value.size() || !std::isfinite(parsed)) return std::nullopt;
         return parsed;
     } catch (const std::invalid_argument&) {
         return std::nullopt;
@@ -66,26 +65,28 @@ std::vector<ColumnAggregate> AggregateByColumn(
                     + " with " + std::to_string(fields.size()) + " columns");
             }
         }
-        const std::string& value = fields[group_column];
-        if (IsBlank(value))
-            continue;
+        const std::string& value_1 = fields[group_column];
+        std::string value_2 = fields[sum_column];
 
-        const auto row_value = fields[sum_column].empty()
+        if (IsBlank(value_1))
+            continue;
+       
+        // Check for ',' decimal separator, replace with '.'
+        if (value_2.find(",")) {
+            std::replace(value_2.begin(), value_2.end(), ',', '.');
+        } 
+        const auto row_value = value_2.empty()
             ? std::optional<double>{}
-            : TryParseAggregateValue(fields[sum_column]);
-        if (!row_value)
-            continue;
+            : TryParseAggregateValue(value_2);
+        if (!row_value) continue;
 
-        auto [it, inserted] = aggregate_indices.emplace(value, aggregates.size());
-        if (inserted)
-            aggregates.push_back({value, 0, 0.0});
+        auto [it, inserted] = aggregate_indices.emplace(value_1, aggregates.size());
+        if (inserted) aggregates.push_back({value_1, 0, 0.0});
 
         auto& aggregate = aggregates[it->second];
         const double updated_sum = aggregate.sum + *row_value;
-        if (!std::isfinite(updated_sum)) {
-            throw std::overflow_error(
-                "AggregateByColumn: sum overflow for value \"" + value + "\"");
-        }
+        if (!std::isfinite(updated_sum)) 
+            throw std::overflow_error("AggregateByColumn: sum overflow for value \"" + value_1 + "\"");
         ++aggregate.count;
         aggregate.sum = updated_sum;
     }
