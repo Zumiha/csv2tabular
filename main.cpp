@@ -35,6 +35,14 @@ int main(int argc, char* argv[]) {
         // const auto project_settings = LoadSettingsFromIni(project_settings_parser);
         // converter.exportProjectInfoCSV(project_settings);
 
+        std::cout << "Anom count and total length:\n";
+        std::vector<std::string> findValues = {"1", "2", "3"};
+        auto aggrData = AggregateByColumn(converter.getConvertedTable(), 7, 2, findValues);
+        std::cout << "Number of unique values: " << aggrData.size() << std::endl;
+        for (const auto& aggr : aggrData) {
+            std::cout << "Value: " << aggr.value << ", Count: " << aggr.count << ", Sum: " << aggr.sum << std::endl;
+        }
+
     } catch (const std::exception& e) {
         std::cerr << "Error: " << e.what() << std::endl;
     } catch (int e) {
