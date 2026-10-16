@@ -1,5 +1,6 @@
 #include "Utils.h"
 
+#include <algorithm>
 #include <cctype>
 #include <cmath>
 #include <optional>
@@ -26,17 +27,12 @@ std::optional<double> TryParseAggregateValue(const std::string& value)
     }
 }
 
-double ParseAggregateValue(const std::string& value, int row, int column)
+bool IsBlank(const std::string& value)
 {
-    if (value.empty())
-        return 0.0;
-
-    if (const auto parsed = TryParseAggregateValue(value))
-        return *parsed;
-    throw std::invalid_argument(
-        "AggregateByColumn: invalid numeric value in row "
-        + std::to_string(row) + ", column " + std::to_string(column)
-        + ": \"" + value + "\"");
+    return value.empty()
+        || std::all_of(value.begin(), value.end(), [](unsigned char character) {
+               return std::isspace(character);
+           });
 }
 
 } // namespace
@@ -44,10 +40,19 @@ double ParseAggregateValue(const std::string& value, int row, int column)
 std::vector<ColumnAggregate> AggregateByColumn(
     const TabularData& table,
     int group_column,
-    int sum_column)
+    int sum_column,
+    const std::vector<std::string>& requested_group_values)
 {
     std::vector<ColumnAggregate> aggregates;
     std::map<std::string, std::size_t> aggregate_indices;
+
+    for (const auto& value : requested_group_values) {
+        if (IsBlank(value))
+            continue;
+
+        if (aggregate_indices.emplace(value, aggregates.size()).second)
+            aggregates.push_back({value, 0, 0.0});
+    }
 
     for (std::size_t row_index = 0; row_index < table.rows.size(); ++row_index) {
         const auto& fields = table.rows[row_index];
@@ -61,17 +66,22 @@ std::vector<ColumnAggregate> AggregateByColumn(
                     + " with " + std::to_string(fields.size()) + " columns");
             }
         }
-        // Value from group_column
         const std::string& value = fields[group_column];
-        // Push value to map, if already present then `inserted` will be false
+        if (IsBlank(value))
+            continue;
+
+        const auto row_value = fields[sum_column].empty()
+            ? std::optional<double>{}
+            : TryParseAggregateValue(fields[sum_column]);
+        if (!row_value)
+            continue;
+
         auto [it, inserted] = aggregate_indices.emplace(value, aggregates.size());
-        // If inserted is true, it means this value was not present in the map, so we need to add a new ColumnAggregate
         if (inserted)
             aggregates.push_back({value, 0, 0.0});
-        
-        auto& aggregate = aggregates[it->second]; // Find ColumnAggregate for current value
-        const double row_value = ParseAggregateValue(fields[sum_column], row_number, sum_column); // Parse value from sum_column
-        const double updated_sum = aggregate.sum + row_value; // Calculate new sum
+
+        auto& aggregate = aggregates[it->second];
+        const double updated_sum = aggregate.sum + *row_value;
         if (!std::isfinite(updated_sum)) {
             throw std::overflow_error(
                 "AggregateByColumn: sum overflow for value \"" + value + "\"");

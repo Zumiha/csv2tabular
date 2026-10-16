@@ -64,11 +64,14 @@ struct ColumnAggregate {
 };
 
 // Groups rows by a zero-based column and sums the numeric values in another
-// zero-based column. Empty sum cells contribute zero; invalid values throw.
-// Results retain the order in which each group first appears in the table.
+// zero-based column. Rows with blank group values or blank/non-numeric sum
+// values are skipped. Results retain the order in which each group first
+// appears in the table, after any requested group values. Requested groups
+// with no matching rows are returned with a zero count and sum.
 std::vector<ColumnAggregate> AggregateByColumn(
     const TabularData& table,
     int group_column,
-    int sum_column);
+    int sum_column,
+    const std::vector<std::string>& requested_group_values = {});
 
-#endif // UTILS_H
+    #endif // UTILS_H
