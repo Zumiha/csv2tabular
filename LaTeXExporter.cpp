@@ -113,6 +113,34 @@ char ResolveColumnType(char column_type)
     return column_type == '\0' ? 'm' : column_type;
 }
 
+void ValidateCellColorSettings(const TableLayoutOptions& layout, std::size_t column_count)
+{
+    const bool has_cell_colors = layout.cell_color_column.has_value() ||
+        !layout.cell_color_values.empty() || !layout.cell_colors.empty();
+    if (!has_cell_colors) {
+        return;
+    }
+
+    if (!layout.cell_color_column) {
+        throw std::invalid_argument("Cell colors require a target column");
+    }
+    if (*layout.cell_color_column < 0 ||
+        static_cast<std::size_t>(*layout.cell_color_column) >= column_count) {
+        throw std::invalid_argument("Cell color target column is outside the exported table");
+    }
+    if (layout.cell_color_values.empty()) {
+        throw std::invalid_argument("Cell colors require at least one value/color rule");
+    }
+    if (layout.cell_color_values.size() != layout.cell_colors.size()) {
+        throw std::invalid_argument("Cell color values and colors must have matching lengths");
+    }
+    for (const auto& color : layout.cell_colors) {
+        if (color.empty() || color.find_first_of("\\{}\r\n") != std::string::npos) {
+            throw std::invalid_argument("Cell colors must be non-empty xcolor specifications");
+        }
+    }
+}
+
 std::string BuildColumnSpec(char column_type, float width)
 {
     std::ostringstream spec;
@@ -187,6 +215,7 @@ std::string LaTeXExporter::draftLaTeX(
     if (options.max_rows >= 0 && table.rows.size() > static_cast<std::size_t>(options.max_rows))
         table.rows.resize(static_cast<std::size_t>(options.max_rows));
 
+    ValidateCellColorSettings(layout, table.header.size());
     if (table.header.empty()) {
         latex_string_.clear();
         std::cerr << "[WARN] draftLaTeX: header is empty, returning empty LaTeX string\n";
@@ -308,6 +337,23 @@ std::string LaTeXExporter::headerLineRender(int start_cell, int end_cell, const 
     return line;
 }
 
+std::string LaTeXExporter::cellColorPrefix(
+    int column,
+    const std::string& value,
+    const TableLayoutOptions& layout) const
+{
+    if (!layout.cell_color_column || column != *layout.cell_color_column) {
+        return {};
+    }
+
+    for (std::size_t i = 0; i < layout.cell_color_values.size(); ++i) {
+        if (value == std::to_string(layout.cell_color_values[i])) {
+            return "\\cellcolor{" + layout.cell_colors[i] + "} ";
+        }
+    }
+    return {};
+}
+
 void LaTeXExporter::tableRender(
     int _table_width,
     int start_cell,
@@ -380,7 +426,7 @@ void LaTeXExporter::tableRender(
         }
 
         for (size_t i = start_cell; i < static_cast<size_t>(end_cell) + 1; ++i) {
-            oss << fields[i];
+            oss << cellColorPrefix(static_cast<int>(i), fields[i], layout) << fields[i];
             if (static_cast<int>(i) < end_cell) {
                 oss << " & ";
             } else {

@@ -57,6 +57,10 @@ private:
         const LatexDraftOptions& options,
         const TableLayoutOptions& layout);
     std::string headerLineRender(int start_cell, int end_cell, const std::vector<std::string>& header);
+    std::string cellColorPrefix(
+        int column,
+        const std::string& value,
+        const TableLayoutOptions& layout) const;
     void tableRender(
         int table_width,
         int start_cell,
