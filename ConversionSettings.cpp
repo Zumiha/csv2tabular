@@ -178,6 +178,34 @@ ConversionSettings LoadSettingsFromIni(IniParser& ini)
         } else {
             std::cout << "No custom column width settings found. Using uniform column width.\n";
         }
+
+        const bool has_color_column = ini.hasKey("table_settings.cell_color_column");
+        const bool has_color_values = ini.hasKey("table_settings.cell_color_values");
+        const bool has_colors = ini.hasKey("table_settings.cell_colors");
+        if (has_color_column || has_color_values || has_colors) {
+            if (!(has_color_column && has_color_values && has_colors)) {
+                throw std::invalid_argument(
+                    "table_settings: cell_color_column, cell_color_values, and cell_colors must all be specified");
+            }
+
+            const int color_column = ini.getValue<int>("table_settings.cell_color_column");
+            if (color_column < 1) {
+                throw std::invalid_argument("table_settings.cell_color_column must be 1 or greater");
+            }
+
+            s.table_layout.cell_color_column = color_column - 1;
+            s.table_layout.cell_color_values =
+                ini.getValue<std::vector<int>>("table_settings.cell_color_values");
+            s.table_layout.cell_colors =
+                ini.getValue<std::vector<std::string>>("table_settings.cell_colors");
+            if (s.table_layout.cell_color_values.empty()) {
+                throw std::invalid_argument("table_settings.cell_color_values must not be empty");
+            }
+            if (s.table_layout.cell_color_values.size() != s.table_layout.cell_colors.size()) {
+                throw std::invalid_argument(
+                    "table_settings: cell_color_values and cell_colors must have equal length");
+            }
+        }
     }
 
     // Originally read during table formatting purely because that
@@ -274,6 +302,11 @@ void WriteSettingsToIni(const ConversionSettings& s, const std::string& path)
         out << "column_number = " << JoinInts(s.table_layout.custom_column_number, 1) << "\n";
         out << "column_width = " << JoinInts(s.table_layout.custom_column_width) << "\n";
     }
+    if (s.table_layout.cell_color_column) {
+        out << "cell_color_column = " << (*s.table_layout.cell_color_column + 1) << "\n";
+        out << "cell_color_values = " << JoinInts(s.table_layout.cell_color_values) << "\n";
+        out << "cell_colors = " << JoinStrings(s.table_layout.cell_colors) << "\n";
+    }
     out << "table_width = " << s.table_layout.table_width << "\n";
 
     if (out.fail())
@@ -305,6 +338,19 @@ std::vector<std::string> ValidateSettings(const ConversionSettings& s)
 
     if (s.table_layout.custom_column_number.size() != s.table_layout.custom_column_width.size())
         errors.push_back("Custom column widths: column list and width list must be the same length.");
+
+    const bool has_cell_colors = s.table_layout.cell_color_column.has_value() ||
+        !s.table_layout.cell_color_values.empty() || !s.table_layout.cell_colors.empty();
+    if (has_cell_colors) {
+        if (!s.table_layout.cell_color_column)
+            errors.push_back("Cell colors: a target column must be specified.");
+        else if (*s.table_layout.cell_color_column < 0)
+            errors.push_back("Cell colors: target column must be 1 or greater.");
+        if (s.table_layout.cell_color_values.empty())
+            errors.push_back("Cell colors: at least one value/color rule must be specified.");
+        if (s.table_layout.cell_color_values.size() != s.table_layout.cell_colors.size())
+            errors.push_back("Cell colors: values and colors must be the same length.");
+    }
 
     if (s.include_header && s.sheet_header.empty())
         errors.push_back("Header is enabled but no header text was provided.");

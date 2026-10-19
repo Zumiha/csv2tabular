@@ -2,6 +2,7 @@
 #define CONVERSION_SETTINGS_H
 
 #include <map>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -30,6 +31,9 @@ struct TableLayoutOptions {
     bool numbered_header_line = false;
     std::vector<int> custom_column_number;
     std::vector<int> custom_column_width;
+    std::optional<int> cell_color_column; // 0-based exported data-column index
+    std::vector<int> cell_color_values;
+    std::vector<std::string> cell_colors;
 };
 
 constexpr std::string_view to_string(TableType t)
