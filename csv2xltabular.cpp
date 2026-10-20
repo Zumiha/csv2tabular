@@ -42,14 +42,14 @@ void CSVtoXLTABularConverter::Convert(const std::string& csv_filename, const Con
         }
 
         if (!settings_.prj_cols.empty()) {
-            const auto project_check = CheckProjectColumns(settings_);
+            const auto project_check = CheckProjectColumns(parsed_table_, settings_);
             if (!project_check.errors.empty())
                 throw std::runtime_error(project_check.errors.front());
         }
         std::cout << "[LOG] Parsing completed\n";
 
         std::cout << "[LOG] Converting table\n";
-        transformTable();
+        converted_table_ = transformTable(parsed_table_);
         std::cout << "[LOG] Conversion completed\n";
         table_converted_ = true;
     } catch (...) {
@@ -66,42 +66,55 @@ void CSVtoXLTABularConverter::invalidateConversion() noexcept
     csv_parser_.reset();
 }
 
-void CSVtoXLTABularConverter::exportToFile(const std::string& output_filename) {
-    exportToFileImpl(output_filename, {});
+void CSVtoXLTABularConverter::exportToFile(
+    const std::string& output_filename,
+    const LatexDraftOptions& options)
+{
+    exportToFileImpl(parsed_table_, output_filename, options);
 }
 
-void CSVtoXLTABularConverter::exportToFile(const std::string& output_filename, const LatexDraftOptions& options) {
-    exportToFileImpl(output_filename, options);
+void CSVtoXLTABularConverter::exportToFile(
+    const TabularData& table,
+    const std::string& output_filename,
+    const LatexDraftOptions& options)
+{
+    exportToFileImpl(table, output_filename, options);
 }
 
 void CSVtoXLTABularConverter::exportToCSV(const std::string& output_filename)
+{
+    exportToCSV(parsed_table_, output_filename);
+}
+
+void CSVtoXLTABularConverter::exportToCSV(
+    const TabularData& table,
+    const std::string& output_filename)
 {
     std::cout << "[LOG] Exporting formatted table to CSV\n";
     if (!table_converted_) {
         std::cout << "[WARN] File was not converted, can't export" << std::endl;
         return;
     }
-    TabularData export_data;
-    if (settings_.include_header) {
-        export_data.header = settings_.sheet_header;
-        export_data.rows.reserve(converted_table_.rows.size() + 1);
-        export_data.rows.push_back(converted_table_.header);
-        export_data.rows.insert(
-            export_data.rows.end(), converted_table_.rows.begin(), converted_table_.rows.end());
-    } else {
-        export_data = converted_table_;
-    }
+    const auto export_data = buildExportData(transformTable(table));
     {
         IndentGuard guard(std::cout, "\t");
         csv_parser_->export_csv(export_data, output_filename);
     }
 
     if (!settings_.prj_cols.empty() && !settings_.prj_cols_header.empty())
-        exportProjectInfoCSV(settings_);
+        exportProjectInfoCSV(settings_, table);
 }
 
 void CSVtoXLTABularConverter::exportProjectInfoCSV(
     const ConversionSettings& settings,
+    const std::string& output_filename)
+{
+    exportProjectInfoCSV(settings, parsed_table_, output_filename);
+}
+
+void CSVtoXLTABularConverter::exportProjectInfoCSV(
+    const ConversionSettings& settings,
+    const TabularData& table,
     const std::string& output_filename)
 {
     if (!table_converted_ || !csv_parser_)
@@ -122,19 +135,27 @@ void CSVtoXLTABularConverter::exportProjectInfoCSV(
 
     IndentGuard guard(std::cout, "\t");
     std::cout << "[DBG] Extracting project data" << std::endl;
-    csv_parser_->export_csv(buildProjectTable(settings), output_filename);
+    csv_parser_->export_csv(buildProjectTable(table, settings), output_filename);
 }
 
-void CSVtoXLTABularConverter::exportToFileImpl(const std::string& output_filename, const LatexDraftOptions& options) {
+void CSVtoXLTABularConverter::exportToFileImpl(
+    const TabularData& table,
+    const std::string& output_filename,
+    const LatexDraftOptions& options)
+{
     if (!table_converted_) {
         throw std::runtime_error("Cannot export LaTeX before converting a CSV file");
     }
-    LaTeXExporter::write(output_filename, buildLaTeXData(), settings_.table_layout, options);
+    LaTeXExporter::write(
+        output_filename,
+        buildExportData(transformTable(table)),
+        settings_.table_layout,
+        options);
 }
 
-void CSVtoXLTABularConverter::transformTable()
+TabularData CSVtoXLTABularConverter::transformTable(const TabularData& table) const
 {
-    converted_table_ = parsed_table_;
+    TabularData converted_table = table;
     // MTM SpreadSheet table conversion block
     if (!settings_.delete_cols.empty()) {
         // Delete columns not used in spreadsheet
@@ -143,7 +164,7 @@ void CSVtoXLTABularConverter::transformTable()
             IndentGuard guard(std::cout, "\t");
             auto reversed_list = Apply1BasedTo0Based(settings_.delete_cols); // Apply 0 based counter
             std::sort(reversed_list.rbegin(), reversed_list.rend()); // Sort in descending order to avoid index shifting issues when deleting
-            csv_parser_->deleteColumns(converted_table_, reversed_list); // Remove columns not used in spreadsheet
+            csv_parser_->deleteColumns(converted_table, reversed_list); // Remove columns not used in spreadsheet
         }
         std::cout << "[LOG] Deletion completed\n";
     }
@@ -153,7 +174,7 @@ void CSVtoXLTABularConverter::transformTable()
         std::cout << "[LOG] Merging specified columns\n";
         {
             IndentGuard guard(std::cout, "\t");
-            csv_parser_->mergeColumns(converted_table_, settings_.merge_from, settings_.merge_into);
+            csv_parser_->mergeColumns(converted_table, settings_.merge_from, settings_.merge_into);
         }
         std::cout << "[LOG] Merging completed\n";
     }
@@ -163,14 +184,14 @@ void CSVtoXLTABularConverter::transformTable()
         std::cout << "[LOG] Reordering columns based on new_order\n";
         {
             IndentGuard guard(std::cout, "\t");
-            csv_parser_->reorderColumns(converted_table_, settings_.move_new_order);
+            csv_parser_->reorderColumns(converted_table, settings_.move_new_order);
         }
         std::cout << "[LOG] Moving columns complete\n";
     } else if (!settings_.move_from.empty()) {
         std::cout << "[LOG] Moving columns based on from+to\n";
         {
             IndentGuard guard(std::cout, "\t");
-            csv_parser_->reorderColumns(converted_table_, settings_.move_from, settings_.move_to);
+            csv_parser_->reorderColumns(converted_table, settings_.move_from, settings_.move_to);
         }
         std::cout << "[LOG] Moving columns complete\n";
     }
@@ -179,29 +200,29 @@ void CSVtoXLTABularConverter::transformTable()
     if (!settings_.decimal_normalizations.empty()) {
         std::cout << "[LOG] Normalizing decimal columns\n";
         for (const auto& [precision, cols] : settings_.decimal_normalizations) {
-            normalizeDecCols(converted_table_, cols, precision, settings_.decimal_delimiter);
+            normalizeDecCols(converted_table, cols, precision, settings_.decimal_delimiter);
         }
         std::cout << "[LOG] Normalization completed\n";
     }
 
+    return converted_table;
 }
 
-TabularData CSVtoXLTABularConverter::buildLaTeXData() const
+TabularData CSVtoXLTABularConverter::buildExportData(const TabularData& table) const
 {
     TabularData data;
     if (settings_.include_header) {
         data.header = settings_.sheet_header;
-        data.rows.reserve(converted_table_.rows.size() + 1);
-        data.rows.push_back(converted_table_.header);
-        data.rows.insert(data.rows.end(), converted_table_.rows.begin(), converted_table_.rows.end());
+        data.rows.reserve(table.rows.size() + 1);
+        data.rows.push_back(table.header);
+        data.rows.insert(data.rows.end(), table.rows.begin(), table.rows.end());
     } else {
-        data.header = converted_table_.header;
-        data.rows = converted_table_.rows;
+        data.header = table.header;
+        data.rows = table.rows;
     }
 
     return data;
 }
-
 void CSVtoXLTABularConverter::normalizeDecCols(TabularData& table, const std::vector<int>& columns_list, int precision, const std::string& delimiter)
 {
     if (precision < 0)
@@ -318,15 +339,17 @@ ConstantColumnsCheck CSVtoXLTABularConverter::CheckConstantRows(const TabularDat
 }
 
 ConstantColumnsCheck CSVtoXLTABularConverter::CheckProjectColumns(
+    const TabularData& table,
     const ConversionSettings& settings) const
 {
-    return CheckConstantRows(ExtractColumns(parsed_table_, settings.prj_cols));
+    return CheckConstantRows(ExtractColumns(table, settings.prj_cols));
 }
 
 TabularData CSVtoXLTABularConverter::buildProjectTable(
+    const TabularData& table,
     const ConversionSettings& settings) const
 {
-    const auto check = CheckProjectColumns(settings);
+    const auto check = CheckProjectColumns(table, settings);
     if (!check.errors.empty())
         throw std::runtime_error(check.errors.front());
 

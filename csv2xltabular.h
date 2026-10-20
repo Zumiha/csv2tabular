@@ -36,12 +36,24 @@ public:
     // Convert(). Throws if the 2-arg constructor wasn't used.
     void convert();
 
-    void exportToFile(const std::string& output_filename = "wt_table.tex");
-    void exportToFile(const std::string& output_filename, const LatexDraftOptions& options);
+    // Exports apply configured transformations to a copy of the supplied raw
+    // table. The overloads without a table use the table parsed by Convert().
+    void exportToFile(
+        const std::string& output_filename = "table_from_csv.tex",
+        const LatexDraftOptions& options = {});
+    void exportToFile(
+        const TabularData& table,
+        const std::string& output_filename = "table_from_csv.tex",
+        const LatexDraftOptions& options = {});
     void exportToCSV(const std::string& output_filename = "debug.csv");
-    // Writes project metadata from the last parsed table using explicitly
-    // supplied settings; it does not require the converter's INI constructor.
+    void exportToCSV(const TabularData& table, const std::string& output_filename = "debug.csv");
+    // Writes project metadata from the parsed table or an explicitly supplied
+    // table, using the supplied settings.
     void exportProjectInfoCSV(const ConversionSettings& settings, const std::string& output_filename = "const_val_rows.csv");
+    void exportProjectInfoCSV(
+        const ConversionSettings& settings,
+        const TabularData& table,
+        const std::string& output_filename = "const_val_rows.csv");
 
     TabularData getParsedTable() const {
         return parsed_table_;
@@ -63,9 +75,12 @@ private:
     TabularData converted_table_; // converted table prepared for CSV output
     bool table_converted_ = false;
 
-    void transformTable();
-    void exportToFileImpl(const std::string& output_filename, const LatexDraftOptions& options);
-    TabularData buildLaTeXData() const;
+    TabularData transformTable(const TabularData& table) const;
+    void exportToFileImpl(
+        const TabularData& table,
+        const std::string& output_filename,
+        const LatexDraftOptions& options);
+    TabularData buildExportData(const TabularData& table) const;
 
     static void normalizeDecCols(TabularData& table, const std::vector<int>& columns_list, int precision = 0, const std::string& delimiter = ",");
 
@@ -80,9 +95,13 @@ private:
     // before committing to a run.
     ConstantColumnsCheck CheckConstantRows(const TabularData& table) const;
 
-    ConstantColumnsCheck CheckProjectColumns(const ConversionSettings& settings) const;
+    ConstantColumnsCheck CheckProjectColumns(
+        const TabularData& table,
+        const ConversionSettings& settings) const;
     void invalidateConversion() noexcept;
-    TabularData buildProjectTable(const ConversionSettings& settings) const;
+    TabularData buildProjectTable(
+        const TabularData& table,
+        const ConversionSettings& settings) const;
 
 };
 
