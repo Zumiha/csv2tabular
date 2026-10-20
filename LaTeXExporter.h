@@ -26,6 +26,9 @@ struct LatexDraftOptions {
         std::optional<bool> numbered_header_line;
         std::optional<std::vector<int>> custom_column_number;
         std::optional<std::vector<int>> custom_column_width;
+        std::optional<int> cell_color_column; // 0-based exported data-column index
+        std::optional<std::vector<int>> cell_color_values;
+        std::optional<std::vector<std::string>> cell_colors;
     } layout_overrides;
 };
 

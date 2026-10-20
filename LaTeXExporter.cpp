@@ -169,6 +169,9 @@ TableLayoutOptions ResolveLayout(
     if (overrides.numbered_header_line) layout.numbered_header_line = *overrides.numbered_header_line;
     if (overrides.custom_column_number) layout.custom_column_number = *overrides.custom_column_number;
     if (overrides.custom_column_width) layout.custom_column_width = *overrides.custom_column_width;
+    if (overrides.cell_color_column) layout.cell_color_column = *overrides.cell_color_column;
+    if (overrides.cell_color_values) layout.cell_color_values = *overrides.cell_color_values;
+    if (overrides.cell_colors) layout.cell_colors = *overrides.cell_colors;
     return layout;
 }
 
